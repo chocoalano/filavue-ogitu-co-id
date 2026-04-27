@@ -945,7 +945,7 @@ return new class extends Migration
         Schema::create('job_batches', function (Blueprint $table) {
             $table->charset = 'utf8mb4';
             $table->collation = 'utf8mb4_unicode_ci';
-            $table->string('id', 255);
+            $table->string('id', 255)->primary();
             $table->string('name', 255);
             $table->integer('total_jobs');
             $table->integer('pending_jobs');
@@ -1009,7 +1009,7 @@ return new class extends Migration
         Schema::create('notifications', function (Blueprint $table) {
             $table->charset = 'utf8mb4';
             $table->collation = 'utf8mb4_unicode_ci';
-            $table->char('id', 36);
+            $table->char('id', 36)->primary();
             $table->string('type', 255);
             $table->string('notifiable_type', 255);
             $table->unsignedBigInteger('notifiable_id');
@@ -1543,7 +1543,7 @@ return new class extends Migration
         Schema::create('sessions', function (Blueprint $table) {
             $table->charset = 'utf8mb4';
             $table->collation = 'utf8mb4_unicode_ci';
-            $table->string('id', 255);
+            $table->string('id', 255)->primary();
             $table->unsignedBigInteger('user_id')->nullable();
             $table->string('ip_address', 45)->nullable();
             $table->text('user_agent')->nullable();
