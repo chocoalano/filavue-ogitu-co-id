@@ -1,0 +1,344 @@
+@import '../../../../vendor/filament/filament/resources/css/theme.css';
+
+@source '../../../../app/Filament/**/*';
+@source '../../../../resources/views/filament/**/*';
+
+/* Futuristic zinc-only sidebar (Filament v5) */
+.fi-sidebar {
+    @apply bg-white dark:bg-zinc-900/70 backdrop-blur-lg;
+    @apply border-r border-zinc-200/70 dark:border-zinc-800/70;
+}
+
+a.fi-ac-btn-action {
+    @apply bg-gray-950 text-white hover:bg-gray-800;
+    @apply dark:bg-white dark:text-gray-950 dark:hover:bg-gray-200;
+}
+button.fi-ac-btn-action {
+    @apply bg-gray-950 text-white hover:bg-gray-800;
+    @apply dark:bg-white dark:text-gray-950 dark:hover:bg-gray-200;
+}
+/* Sidebar link: lebih compact (tinggi item + padding diperkecil) */
+.fi-sidebar-nav-groups .fi-sidebar-nav-group .fi-sidebar-nav-link {
+    @apply text-gray-950 hover:bg-gray-100;
+    @apply dark:text-white dark:hover:bg-zinc-800/70;
+
+    /* compact spacing */
+    @apply py-1.5 min-h-8 leading-tight;
+}
+
+/* Icon dan label biar ikut rapat */
+.fi-sidebar-nav-groups .fi-sidebar-nav-group .fi-sidebar-nav-link .fi-sidebar-nav-link-icon {
+    @apply size-4;
+}
+
+.fi-sidebar-nav-groups .fi-sidebar-nav-group .fi-sidebar-nav-link .fi-sidebar-nav-link-label {
+    @apply text-sm;
+}
+
+/* (Opsional) rapatkan jarak antar item dalam group */
+.fi-sidebar-nav-groups .fi-sidebar-nav-group .fi-sidebar-nav-items {
+    @apply gap-0.5;
+}
+
+/* (Opsional) rapatkan jarak antar group */
+.fi-sidebar-nav-groups {
+    @apply gap-1;
+}
+
+/* ── Dashboard widget cards background pattern ──────────────────────────── */
+.fi-account-widget > div,
+.fi-app-info-widget > div {
+    background-image: repeating-linear-gradient(
+        45deg,
+        transparent,
+        transparent 13px,
+        rgb(113 113 122 / 9%) 13px,
+        rgb(113 113 122 / 9%) 14px
+    );
+}
+
+.dark .fi-account-widget > div,
+.dark .fi-app-info-widget > div {
+    background-image: repeating-linear-gradient(
+        45deg,
+        transparent,
+        transparent 13px,
+        rgb(255 255 255 / 4%) 13px,
+        rgb(255 255 255 / 4%) 14px
+    );
+}
+
+/* ── Stats Overview ──────────────────────────────────────────────────────── */
+.fi-wi-stats-overview .fi-section-header {
+    @apply items-end;
+}
+
+.fi-wi-stats-overview .fi-section-header-heading {
+    @apply text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-100;
+}
+
+.fi-wi-stats-overview .fi-section-header-description {
+    @apply text-sm text-zinc-500 dark:text-zinc-400;
+}
+
+.fi-wi-stats-overview .fi-section-content {
+    @apply gap-2.5 xl:gap-3;
+}
+
+/* ── Stat card base ─────────────────────────────────────────────────────── */
+.fi-wi-stats-overview-stat {
+    @apply relative isolate overflow-hidden rounded-xl border border-zinc-200 bg-white p-4 pb-12 transition-all duration-200 ease-out;
+    background-image: repeating-linear-gradient(
+        45deg,
+        transparent,
+        transparent 13px,
+        rgb(113 113 122 / 9%) 13px,
+        rgb(113 113 122 / 9%) 14px
+    );
+}
+
+.fi-wi-stats-overview-stat:hover {
+    @apply -translate-y-0.5 border-zinc-300;
+}
+
+/* Content area */
+.fi-wi-stats-overview-stat .fi-wi-stats-overview-stat-content {
+    @apply relative z-10 grid gap-y-2 pr-10 text-left;
+}
+
+.fi-wi-stats-overview-stat .fi-wi-stats-overview-stat-label-ctn {
+    @apply justify-start gap-x-2;
+}
+
+/* Label */
+.fi-wi-stats-overview-stat .fi-wi-stats-overview-stat-label {
+    @apply text-[10px] font-bold uppercase tracking-widest text-zinc-500;
+}
+
+/* Icon — circular badge, top-right */
+.fi-wi-stats-overview-stat .fi-wi-stats-overview-stat-label-ctn .fi-icon {
+    @apply absolute top-3.5 right-3.5 size-8 rounded-full border border-zinc-200/90 bg-white p-1.5 text-zinc-700;
+}
+
+/* Value */
+.fi-wi-stats-overview-stat .fi-wi-stats-overview-stat-value {
+    @apply text-2xl font-semibold leading-none tracking-tight text-zinc-950;
+    max-width: calc(100% - 0.25rem);
+    overflow-wrap: anywhere;
+}
+
+/* Description */
+.fi-wi-stats-overview-stat .fi-wi-stats-overview-stat-description {
+    @apply inline-flex items-center gap-x-1.5 border-t border-zinc-200/80 pt-2 text-[11px] font-medium text-zinc-600;
+}
+
+.fi-wi-stats-overview-stat .fi-wi-stats-overview-stat-description .fi-icon {
+    @apply size-3.5 text-zinc-500;
+}
+
+.fi-wi-stats-overview-stat .fi-wi-stats-overview-stat-description span {
+    display: -webkit-box;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+}
+
+/* Chart strip */
+.fi-wi-stats-overview-stat .fi-wi-stats-overview-stat-chart {
+    @apply absolute inset-x-3 bottom-2.5 h-8 overflow-hidden rounded-lg border border-zinc-200/80 bg-zinc-100/70 backdrop-blur-sm;
+}
+
+.fi-wi-stats-overview-stat .fi-wi-stats-overview-stat-chart > canvas {
+    @apply h-8;
+}
+
+.fi-wi-stats-overview-stat .fi-wi-stats-overview-stat-chart .fi-wi-stats-overview-stat-chart-bg-color {
+    @apply text-zinc-100;
+}
+
+.fi-wi-stats-overview-stat .fi-wi-stats-overview-stat-chart .fi-wi-stats-overview-stat-chart-border-color {
+    @apply text-zinc-400;
+}
+
+/* ── Variant accent system ──────────────────────────────────────────────── */
+.cp-zinc-stat {
+    @apply border-t-4;
+}
+
+/* north — darkest zinc */
+.cp-zinc-stat--north {
+    @apply border-t-zinc-900;
+}
+
+.cp-zinc-stat--north .fi-wi-stats-overview-stat-label-ctn .fi-icon {
+    @apply border-zinc-900 bg-zinc-900 text-zinc-50;
+}
+
+.cp-zinc-stat--north .fi-wi-stats-overview-stat-chart {
+    @apply bg-zinc-100/85;
+}
+
+.cp-zinc-stat--north .fi-wi-stats-overview-stat-chart .fi-wi-stats-overview-stat-chart-bg-color {
+    @apply text-zinc-300;
+}
+
+.cp-zinc-stat--north .fi-wi-stats-overview-stat-chart .fi-wi-stats-overview-stat-chart-border-color {
+    @apply text-zinc-800;
+}
+
+/* graphite */
+.cp-zinc-stat--graphite {
+    @apply border-t-zinc-800;
+}
+
+.cp-zinc-stat--graphite .fi-wi-stats-overview-stat-label-ctn .fi-icon {
+    @apply border-zinc-800 bg-zinc-800 text-zinc-100;
+}
+
+.cp-zinc-stat--graphite .fi-wi-stats-overview-stat-chart {
+    @apply bg-zinc-100/80;
+}
+
+.cp-zinc-stat--graphite .fi-wi-stats-overview-stat-chart .fi-wi-stats-overview-stat-chart-bg-color {
+    @apply text-zinc-300;
+}
+
+.cp-zinc-stat--graphite .fi-wi-stats-overview-stat-chart .fi-wi-stats-overview-stat-chart-border-color {
+    @apply text-zinc-700;
+}
+
+/* alloy */
+.cp-zinc-stat--alloy {
+    @apply border-t-zinc-700;
+}
+
+.cp-zinc-stat--alloy .fi-wi-stats-overview-stat-label-ctn .fi-icon {
+    @apply border-zinc-700 bg-zinc-700 text-zinc-100;
+}
+
+.cp-zinc-stat--alloy .fi-wi-stats-overview-stat-chart {
+    @apply bg-zinc-100/75;
+}
+
+.cp-zinc-stat--alloy .fi-wi-stats-overview-stat-chart .fi-wi-stats-overview-stat-chart-bg-color {
+    @apply text-zinc-300;
+}
+
+.cp-zinc-stat--alloy .fi-wi-stats-overview-stat-chart .fi-wi-stats-overview-stat-chart-border-color {
+    @apply text-zinc-600;
+}
+
+/* chrome — lightest accent */
+.cp-zinc-stat--chrome {
+    @apply border-t-zinc-600;
+}
+
+.cp-zinc-stat--chrome .fi-wi-stats-overview-stat-label-ctn .fi-icon {
+    @apply border-zinc-600 bg-zinc-600 text-zinc-100;
+}
+
+.cp-zinc-stat--chrome .fi-wi-stats-overview-stat-chart {
+    @apply bg-zinc-100/70;
+}
+
+.cp-zinc-stat--chrome .fi-wi-stats-overview-stat-chart .fi-wi-stats-overview-stat-chart-bg-color {
+    @apply text-zinc-200;
+}
+
+.cp-zinc-stat--chrome .fi-wi-stats-overview-stat-chart .fi-wi-stats-overview-stat-chart-border-color {
+    @apply text-zinc-500;
+}
+
+/* ── Dark mode ──────────────────────────────────────────────────────────── */
+.dark .fi-wi-stats-overview-stat {
+    @apply border-zinc-700/60 bg-zinc-900;
+    background-image: repeating-linear-gradient(
+        45deg,
+        transparent,
+        transparent 13px,
+        rgb(255 255 255 / 4%) 13px,
+        rgb(255 255 255 / 4%) 14px
+    );
+}
+
+.dark .fi-wi-stats-overview-stat:hover {
+    @apply border-zinc-600;
+}
+
+.dark .fi-wi-stats-overview-stat .fi-wi-stats-overview-stat-label {
+    @apply text-zinc-400;
+}
+
+.dark .fi-wi-stats-overview-stat .fi-wi-stats-overview-stat-value {
+    @apply text-zinc-50;
+}
+
+.dark .fi-wi-stats-overview-stat .fi-wi-stats-overview-stat-description {
+    @apply border-zinc-700/80 text-zinc-300;
+}
+
+.dark .fi-wi-stats-overview-stat .fi-wi-stats-overview-stat-description .fi-icon {
+    @apply text-zinc-300;
+}
+
+.dark .fi-wi-stats-overview-stat .fi-wi-stats-overview-stat-chart {
+    @apply border-zinc-700/80 bg-zinc-900/60;
+}
+
+.dark .fi-wi-stats-overview-stat .fi-wi-stats-overview-stat-chart .fi-wi-stats-overview-stat-chart-bg-color {
+    @apply text-zinc-800;
+}
+
+.dark .fi-wi-stats-overview-stat .fi-wi-stats-overview-stat-chart .fi-wi-stats-overview-stat-chart-border-color {
+    @apply text-zinc-500;
+}
+
+/* Dark: icon overrides per variant */
+.dark .cp-zinc-stat--north .fi-wi-stats-overview-stat-label-ctn .fi-icon {
+    @apply border-zinc-300 bg-zinc-100 text-zinc-900;
+}
+
+.dark .cp-zinc-stat--north .fi-wi-stats-overview-stat-chart .fi-wi-stats-overview-stat-chart-bg-color {
+    @apply text-zinc-700;
+}
+
+.dark .cp-zinc-stat--north .fi-wi-stats-overview-stat-chart .fi-wi-stats-overview-stat-chart-border-color {
+    @apply text-zinc-200;
+}
+
+.dark .cp-zinc-stat--graphite .fi-wi-stats-overview-stat-label-ctn .fi-icon {
+    @apply border-zinc-200 bg-zinc-200 text-zinc-900;
+}
+
+.dark .cp-zinc-stat--graphite .fi-wi-stats-overview-stat-chart .fi-wi-stats-overview-stat-chart-bg-color {
+    @apply text-zinc-700;
+}
+
+.dark .cp-zinc-stat--graphite .fi-wi-stats-overview-stat-chart .fi-wi-stats-overview-stat-chart-border-color {
+    @apply text-zinc-300;
+}
+
+.dark .cp-zinc-stat--alloy .fi-wi-stats-overview-stat-label-ctn .fi-icon {
+    @apply border-zinc-300 bg-zinc-300 text-zinc-900;
+}
+
+.dark .cp-zinc-stat--alloy .fi-wi-stats-overview-stat-chart .fi-wi-stats-overview-stat-chart-bg-color {
+    @apply text-zinc-700;
+}
+
+.dark .cp-zinc-stat--alloy .fi-wi-stats-overview-stat-chart .fi-wi-stats-overview-stat-chart-border-color {
+    @apply text-zinc-300;
+}
+
+.dark .cp-zinc-stat--chrome .fi-wi-stats-overview-stat-label-ctn .fi-icon {
+    @apply border-zinc-400 bg-zinc-400 text-zinc-900;
+}
+
+.dark .cp-zinc-stat--chrome .fi-wi-stats-overview-stat-chart .fi-wi-stats-overview-stat-chart-bg-color {
+    @apply text-zinc-700;
+}
+
+.dark .cp-zinc-stat--chrome .fi-wi-stats-overview-stat-chart .fi-wi-stats-overview-stat-chart-border-color {
+    @apply text-zinc-400;
+}

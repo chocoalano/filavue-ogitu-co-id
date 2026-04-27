@@ -1,0 +1,478 @@
+/*
+ * Bootstrap 3 + Invoice fallback styles for mPDF.
+ * This file is injected when bootstrap@3.x stylesheet link is detected.
+ */
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+}
+
+.invoice-page {
+    font-family: DejaVu Sans, sans-serif;
+    font-size: 10pt;
+    line-height: 1.45;
+    color: #0f172a;
+    background: #ffffff;
+}
+
+.invoice-page-compact {
+    font-size: 9.6pt;
+}
+
+.container-fluid,
+.invoice-container {
+    width: 100%;
+}
+
+.invoice-shell {
+    border: 1px solid #d4dbe6;
+    border-radius: 8px;
+    padding: 10px;
+    background: #ffffff;
+}
+
+.text-left {
+    text-align: left;
+}
+
+.text-right {
+    text-align: right;
+}
+
+.text-center {
+    text-align: center;
+}
+
+.text-muted {
+    color: #5b6b80;
+}
+
+.text-muted-light {
+    color: #6b7a90;
+}
+
+.nowrap {
+    white-space: nowrap;
+}
+
+.strong {
+    font-weight: 700;
+}
+
+.label {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 7.8pt;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+}
+
+.invoice-status-label {
+    text-transform: uppercase;
+}
+
+.status-paid {
+    background: #dcfce7;
+    color: #166534;
+    border: 1px solid #86efac;
+}
+
+.status-unpaid {
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fca5a5;
+}
+
+.invoice-header {
+    color: #0f172a;
+    background: #fbfcfe;
+    border: 1px solid #d5deea;
+    border-top: 4px solid #2563eb;
+    border-radius: 8px;
+    padding: 12px 14px 11px;
+    margin-bottom: 11px;
+}
+
+.invoice-header-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.invoice-header-left {
+    width: 56%;
+    vertical-align: top;
+    padding-right: 12px;
+}
+
+.invoice-header-right {
+    width: 44%;
+    vertical-align: top;
+    padding-left: 12px;
+    border-left: 1px solid #dde5f1;
+    text-align: right;
+}
+
+.invoice-logo {
+    max-height: 42px;
+    margin-bottom: 7px;
+}
+
+.invoice-store-name {
+    font-size: 16pt;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: 0.15px;
+    color: #0f172a;
+}
+
+.invoice-tagline {
+    margin-top: 2px;
+    font-size: 8.5pt;
+    line-height: 1.3;
+    color: #5f6f84;
+}
+
+.invoice-title {
+    margin-bottom: 1px;
+    font-size: 15.5pt;
+    font-weight: 700;
+    letter-spacing: 0.9px;
+    line-height: 1;
+    text-align: right;
+    color: #0f172a;
+}
+
+.invoice-subtitle {
+    margin-top: 0;
+    margin-bottom: 7px;
+    font-size: 7.8pt;
+    letter-spacing: 0.25px;
+    color: #6b7a90;
+    text-align: right;
+}
+
+.invoice-title-wrap {
+    margin-bottom: 2px;
+}
+
+.invoice-header-meta-cell {
+    padding-top: 7px;
+    border-top: 1px solid #dfe7f2;
+}
+
+.invoice-info-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.invoice-info-table td {
+    padding: 0 8px 0 0;
+    vertical-align: top;
+}
+
+.invoice-info-item {
+    width: 25%;
+}
+
+.invoice-info-item-label {
+    margin-bottom: 1px;
+    color: #6b7a90;
+    font-size: 7pt;
+    line-height: 1.2;
+    text-transform: uppercase;
+    letter-spacing: 0.28px;
+}
+
+.invoice-info-item-value {
+    color: #0f172a;
+    font-size: 8.6pt;
+    line-height: 1.25;
+    font-weight: 700;
+}
+
+.invoice-header-status {
+    margin-top: 4px;
+}
+
+.invoice-header-status .label {
+    margin-top: 0;
+}
+
+.invoice-meta-strip {
+    margin-bottom: 11px;
+    border: 1px solid #dce3ee;
+    background: #f8fafd;
+    border-radius: 6px;
+    padding: 6px 8px;
+}
+
+.invoice-meta-strip-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 8.4pt;
+}
+
+.meta-strip-label {
+    color: #677991;
+    margin-right: 3px;
+}
+
+.invoice-party-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 11px;
+}
+
+.invoice-party-cell {
+    width: 50%;
+    vertical-align: top;
+    background: #ffffff;
+}
+
+.invoice-party-cell-left {
+    padding-right: 5px;
+}
+
+.invoice-party-cell-right {
+    padding-left: 5px;
+}
+
+.panel {
+    border: 1px solid #d8e0ea;
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+.panel-default {
+    border-color: #d8e0ea;
+}
+
+.panel-heading {
+    border-bottom: 1px solid #e3eaf4;
+    background: #f7f9fc;
+    padding: 7px 10px 6px;
+    font-size: 9pt;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+}
+
+.panel-body {
+    padding: 9px 10px;
+}
+
+.section-gap {
+    margin-top: 4px;
+}
+
+.invoice-party-name {
+    margin-bottom: 7px;
+    color: #0f172a;
+    font-size: 9.2pt;
+    font-weight: 700;
+    line-height: 1.28;
+}
+
+.invoice-party-detail-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.invoice-party-detail-table td {
+    padding: 1px 0 2px;
+    vertical-align: top;
+    font-size: 8.15pt;
+    line-height: 1.33;
+}
+
+.invoice-party-line {
+    width: 100%;
+}
+
+.invoice-party-line-label {
+    display: block;
+    margin-bottom: 0;
+    color: #6a7b91;
+    font-size: 7pt;
+    font-weight: 600;
+    line-height: 1.25;
+    letter-spacing: 0.1px;
+    text-transform: none;
+}
+
+.invoice-party-line-value {
+    display: block;
+    color: #243244;
+    font-size: 8.35pt;
+    font-weight: 600;
+    line-height: 1.34;
+    word-break: break-word;
+}
+
+.invoice-party-row-address .invoice-party-line-value {
+    padding-top: 2px;
+    font-weight: 500;
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 0;
+}
+
+.table th,
+.table td {
+    padding: 6px 8px;
+    vertical-align: top;
+    font-size: 8.6pt;
+    background: #ffffff;
+}
+
+.table-bordered th,
+.table-bordered td {
+    border: 1px solid #dee6f0;
+}
+
+.table-condensed th,
+.table-condensed td {
+    padding: 6px 8px;
+}
+
+.invoice-items-table {
+    margin-top: 4px;
+}
+
+.invoice-items-table thead th {
+    background: #e9eef5;
+    color: #1e293b;
+    font-weight: 700;
+    font-size: 8.4pt;
+    letter-spacing: 0.2px;
+}
+
+.invoice-item-row-alt td {
+    background: #f8fafd;
+}
+
+.invoice-summary-wrap {
+    margin-top: 11px;
+    width: 100%;
+}
+
+.invoice-summary-table {
+    width: 48%;
+    margin-left: auto;
+}
+
+.invoice-summary-table td {
+    border-bottom: 1px solid #dde5f0;
+    background: #ffffff;
+}
+
+.invoice-summary-head td {
+    background: #edf2f8;
+    color: #334155;
+    font-size: 8pt;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+}
+
+.invoice-grand-total td {
+    border-top: 2px solid #374151;
+    border-bottom: 2px solid #374151;
+    font-size: 10pt;
+    font-weight: 700;
+    color: #111827;
+}
+
+.invoice-note {
+    margin-top: 11px;
+    border: 1px dashed #b3c1d4;
+    background: #f8fafd;
+    border-radius: 6px;
+    padding: 8px 10px 7px;
+    font-size: 8.5pt;
+}
+
+.invoice-note-title {
+    margin-bottom: 2px;
+    color: #415166;
+    font-size: 7.7pt;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+}
+
+.invoice-footer {
+    margin-top: 11px;
+    padding-top: 7px;
+    border-top: 1px solid #d7dfeb;
+    font-size: 7.7pt;
+    line-height: 1.55;
+    background: #ffffff;
+}
+
+.invoice-footer-meta {
+    float: right;
+    color: #8fa0b8;
+}
+
+/* Bootstrap button subset kept for compatibility and tests. */
+.btn {
+    display: inline-block;
+    margin-bottom: 0;
+    padding: 6px 12px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 1.42857143;
+    text-align: center;
+    white-space: nowrap;
+    vertical-align: middle;
+    cursor: default;
+    user-select: none;
+}
+
+.btn-default {
+    color: #333333;
+    background-color: #ffffff;
+    border-color: #cccccc;
+}
+
+.btn-group,
+.btn-group-vertical {
+    display: inline-block;
+    vertical-align: middle;
+}
+
+.btn-group > .btn,
+.btn-group-vertical > .btn {
+    display: inline-block;
+    margin-right: -1px;
+    vertical-align: top;
+}
+
+.btn-group-justified {
+    display: block;
+    width: 100%;
+    text-align: center;
+}
+
+.btn-group-justified > .btn,
+.btn-group-justified > .btn-group {
+    display: inline-block;
+    width: 33.3333%;
+    vertical-align: top;
+}
+
+.btn-group-justified > .btn-group .btn {
+    display: block;
+    width: 100%;
+}

@@ -1,0 +1,54 @@
+*.log
+*.sql
+
+.DS_Store
+Thumbs.db
+
+.env
+.env.backup
+.env.production
+
+.phpactor.json
+.phpunit.result.cache
+
+/.fleet
+/.idea
+/.nova
+/.phpunit.cache
+/.vscode
+/.agents
+/.claude
+/.codex
+/.zed
+
+/auth.json
+
+/node_modules
+/vendor
+
+# Build files
+# /public/build
+/public/hot
+/public/storage
+
+# Jangan upload semua file Vue di resources/js
+/resources/js/**/*.vue
+
+# Optional: kalau ingin seluruh folder frontend tertentu tidak ikut git
+/resources/js/components
+/resources/js/composables
+/resources/js/layouts
+/resources/js/pages
+/resources/js/types
+
+/storage/*.key
+/storage/pail
+
+Homestead.json
+Homestead.yaml
+
+rr
+.rr.yaml
+
+AGENTS.md
+CLAUDE.md

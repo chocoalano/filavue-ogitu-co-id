@@ -1,0 +1,35 @@
+{
+  "cookies": [
+    {
+      "name": "XSRF-TOKEN",
+      "value": "eyJpdiI6IkI5TGdjR1RqTllQTXBod05NQ1BISEE9PSIsInZhbHVlIjoiUjdjMXF2eDYvRnFCWjU3ajR0QnY3dGswUldhM3JtNUlidmlJVUJIYi9zeGd2N3NNUHM1NEZMOCtJMDhCczBpQlpjakJITUhZK01xbDRxVFJNRzR3V0RXY1VHckVUTlZQTVU3TnhiTnFubm1DeWE4TFhOZzJrZ0xPZ3UvRWRWNVEiLCJtYWMiOiJkYzljODY5ZWYzODI3YjAwOGFjMjVmNzE4M2JlNzE3MDgwZjc4ZTllZGM3MzdiYjI2NTNkY2ZiY2E2MTM3OTRhIiwidGFnIjoiIn0%3D",
+      "domain": "127.0.0.1",
+      "path": "/",
+      "expires": 1775560883.978802,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "ogituid-session",
+      "value": "eyJpdiI6InkwcXNTYTFDcC9YcjVFQjNWQmVFb1E9PSIsInZhbHVlIjoiMCtWemdlMHVrZ2NybTRIejRpRCtURXRRdDB5NStnN3lYSUM0eEJLclQvbkp3Qjh6cjZEV2tCQUlHdnd4RDFMc0JXVmpRYW16WW1JQWdkeEhsS0Vyc3pzTmZHdDFCQ1FJWG90RWdRaWVYOXE2aFdaZ3BHZnFOK0xOVjZhd0ZMc24iLCJtYWMiOiJkMTBiNTMxMjM2NWY0MGM0NzRmNmNjZWU4M2QwZDM0OTYxMjQ0ZTA0YzViN2ZmYWZjOTU4Zjk1Y2RmMmI4MDE3IiwidGFnIjoiIn0%3D",
+      "domain": "127.0.0.1",
+      "path": "/",
+      "expires": 1775560883.979509,
+      "httpOnly": true,
+      "secure": false,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": [
+    {
+      "origin": "http://127.0.0.1:8000",
+      "localStorage": [
+        {
+          "name": "vueuse-color-scheme",
+          "value": "auto"
+        }
+      ]
+    }
+  ]
+}
