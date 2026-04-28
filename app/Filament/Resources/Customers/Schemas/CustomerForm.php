@@ -3,7 +3,7 @@
 namespace App\Filament\Resources\Customers\Schemas;
 
 use App\Models\Customer;
-use App\Services\RajaOngkirService;
+use App\Models\JneDestination;
 use App\Support\CustomerUiSettingsConfig;
 use Closure;
 use Filament\Forms\Components\DateTimePicker;
@@ -198,16 +198,20 @@ class CustomerForm
                     ->label('Provinsi')
                     ->options(fn (): array => self::provinceOptions())
                     ->searchable()
+                    ->preload()
+                    ->native(false)
                     ->live()
                     ->required()
-                    ->afterStateUpdated(function (Set $set, $state) {
+                    ->dehydrateStateUsing(fn ($state) => self::normalizeIntegerId($state))
+                    ->afterStateUpdated(function (Set $set, $state): void {
                         $selectedId = self::normalizeRegionId($state);
                         $provinceLabel = $selectedId ? (self::provinceOptions()[$selectedId] ?? null) : null;
-                        $set('province_label', self::toUppercaseLabel($provinceLabel));
 
+                        $set('province_label', self::toUppercaseLabel($provinceLabel));
                         $set('city_id', null);
                         $set('city_label', null);
                         $set('district', null);
+                        $set('district_lion', null);
                     })
                     ->helperText('Pilih provinsi tujuan terlebih dahulu.'),
 
@@ -215,16 +219,20 @@ class CustomerForm
                     ->label('Kota/Kabupaten')
                     ->options(fn (Get $get): array => self::cityOptions($get('province_id')))
                     ->searchable()
+                    ->preload()
+                    ->native(false)
                     ->live()
                     ->required()
                     ->disabled(fn (Get $get): bool => blank($get('province_id')))
-                    ->afterStateUpdated(function (Set $set, Get $get, $state) {
+                    ->dehydrateStateUsing(fn ($state) => self::normalizeIntegerId($state))
+                    ->afterStateUpdated(function (Set $set, Get $get, $state): void {
                         $selectedId = self::normalizeRegionId($state);
                         $cityOptions = self::cityOptions($get('province_id'));
                         $cityLabel = $selectedId ? ($cityOptions[$selectedId] ?? null) : null;
-                        $set('city_label', self::toUppercaseLabel($cityLabel));
 
+                        $set('city_label', self::toUppercaseLabel($cityLabel));
                         $set('district', null);
+                        $set('district_lion', null);
                     })
                     ->helperText('Daftar kota akan muncul setelah provinsi dipilih.'),
 
@@ -232,9 +240,11 @@ class CustomerForm
                     ->label('Kecamatan')
                     ->options(fn (Get $get): array => self::districtOptions($get('city_id')))
                     ->searchable()
+                    ->preload()
+                    ->native(false)
                     ->required()
                     ->disabled(fn (Get $get): bool => blank($get('city_id')))
-                    ->afterStateUpdated(function (Set $set, $state) {
+                    ->afterStateUpdated(function (Set $set, $state): void {
                         $set('district_lion', self::toUppercaseLabel($state));
                     })
                     ->helperText('Wajib diisi untuk perhitungan ongkir yang akurat.'),
@@ -364,14 +374,19 @@ class CustomerForm
                     ->label('Provinsi Stockist')
                     ->options(fn (): array => self::provinceOptions())
                     ->searchable()
+                    ->preload()
+                    ->native(false)
                     ->live()
                     ->required(fn (Get $get): bool => (bool) $get('is_stockist'))
                     ->disabled(fn (Get $get): bool => ! (bool) $get('is_stockist'))
-                    ->afterStateUpdated(function (Set $set, $state) {
+                    ->dehydrateStateUsing(fn ($state) => self::normalizeIntegerId($state))
+                    ->afterStateUpdated(function (Set $set, $state): void {
                         $selectedId = self::normalizeRegionId($state);
                         $provinceLabel = $selectedId ? (self::provinceOptions()[$selectedId] ?? null) : null;
+
                         $set('stockist_province_name', self::toUppercaseLabel($provinceLabel));
                         $set('stockist_kabupaten_id', null);
+                        $set('stockist_kabupaten_name', null);
                     })
                     ->helperText('Wilayah provinsi penempatan stok.'),
 
@@ -379,13 +394,17 @@ class CustomerForm
                     ->label('Kota/Kabupaten Stockist')
                     ->options(fn (Get $get): array => self::cityOptions($get('stockist_province_id')))
                     ->searchable()
+                    ->preload()
+                    ->native(false)
                     ->live()
                     ->required(fn (Get $get): bool => (bool) $get('is_stockist'))
                     ->disabled(fn (Get $get): bool => ! (bool) $get('is_stockist') || blank($get('stockist_province_id')))
-                    ->afterStateUpdated(function (Set $set, Get $get, $state) {
+                    ->dehydrateStateUsing(fn ($state) => self::normalizeIntegerId($state))
+                    ->afterStateUpdated(function (Set $set, Get $get, $state): void {
                         $selectedId = self::normalizeRegionId($state);
                         $cityOptions = self::cityOptions($get('stockist_province_id'));
                         $cityLabel = $selectedId ? ($cityOptions[$selectedId] ?? null) : null;
+
                         $set('stockist_kabupaten_name', self::toUppercaseLabel($cityLabel));
                     })
                     ->helperText('Cakupan kota operasional distributor.'),
@@ -447,88 +466,177 @@ class CustomerForm
     }
 
     // -------------------------------------------------------------------------
-    // PRIVATE UTILITIES (RajaOngkir Logic)
+    // PRIVATE UTILITIES - JNE LOCAL MODEL
     // -------------------------------------------------------------------------
 
+    /**
+     * Select province.
+     *
+     * Key harus ID numerik karena kolom customer_addresses.province_id bertipe integer.
+     * Label tetap nama provinsi JNE.
+     *
+     * @return array<string, string>
+     */
     private static function provinceOptions(): array
     {
-        return Cache::remember('customer_form:provinces', now()->addHours(12), function () {
-            $provinces = app(RajaOngkirService::class)->getProvinces();
-            $options = [];
-            foreach ($provinces as $province) {
-                $id = self::extractRajaOngkirValue($province, ['id', 'province_id']);
-                $name = self::extractRajaOngkirValue($province, ['province_name', 'province', 'name']);
-                if ($id && $name) {
-                    $options[(string) $id] = Str::upper($name);
-                }
-            }
-
-            return $options;
+        return Cache::remember('customer_form:jne:v3:provinces', now()->addHours(12), function (): array {
+            return JneDestination::query()
+                ->selectRaw('MIN(id) as id, province_name')
+                ->whereNotNull('province_name')
+                ->where('province_name', '!=', '')
+                ->groupBy('province_name')
+                ->orderBy('province_name')
+                ->get()
+                ->mapWithKeys(function ($row): array {
+                    return [
+                        (string) $row->id => self::toUppercaseLabel($row->province_name),
+                    ];
+                })
+                ->filter()
+                ->all();
         });
     }
 
+    /**
+     * Select city by selected province ID.
+     *
+     * Key harus ID numerik karena kolom customer_addresses.city_id bertipe integer.
+     * Label tetap nama kota/kabupaten JNE.
+     *
+     * @return array<string, string>
+     */
     private static function cityOptions(mixed $provinceId): array
     {
         $provinceId = self::normalizeRegionId($provinceId);
+
         if (! $provinceId) {
             return [];
         }
 
-        return Cache::remember("customer_form:cities:{$provinceId}", now()->addHours(12), function () use ($provinceId) {
-            $cities = app(RajaOngkirService::class)->getCities((int) $provinceId);
-            $options = [];
-            foreach ($cities as $city) {
-                $id = self::extractRajaOngkirValue($city, ['id', 'city_id']);
-                $name = self::extractRajaOngkirValue($city, ['city_name', 'city', 'name']);
-                $type = self::extractRajaOngkirValue($city, ['type']);
-                if ($id && $name) {
-                    $label = $type ? "{$type} {$name}" : $name;
-                    $options[(string) $id] = Str::upper($label);
-                }
-            }
+        $provinceName = self::provinceNameById($provinceId);
 
-            return $options;
+        if (! $provinceName) {
+            return [];
+        }
+
+        $cacheKey = 'customer_form:jne:v3:cities:'.md5($provinceName);
+
+        return Cache::remember($cacheKey, now()->addHours(12), function () use ($provinceName): array {
+            return JneDestination::query()
+                ->selectRaw('MIN(id) as id, city_name')
+                ->where('province_name', $provinceName)
+                ->whereNotNull('city_name')
+                ->where('city_name', '!=', '')
+                ->groupBy('city_name')
+                ->orderBy('city_name')
+                ->get()
+                ->mapWithKeys(function ($row): array {
+                    return [
+                        (string) $row->id => self::toUppercaseLabel($row->city_name),
+                    ];
+                })
+                ->filter()
+                ->all();
         });
     }
 
+    /**
+     * Select district by selected city ID.
+     *
+     * Key district tetap teks karena field customer_addresses.district biasanya varchar/string.
+     *
+     * @return array<string, string>
+     */
     private static function districtOptions(mixed $cityId): array
     {
         $cityId = self::normalizeRegionId($cityId);
+
         if (! $cityId) {
             return [];
         }
 
-        return Cache::remember("customer_form:districts:{$cityId}", now()->addHours(12), function () use ($cityId) {
-            $districts = app(RajaOngkirService::class)->getDistricts((int) $cityId);
-            $options = [];
-            foreach ($districts as $district) {
-                $name = self::extractRajaOngkirValue($district, ['district_name', 'subdistrict_name', 'name']);
-                if ($name) {
-                    $options[Str::upper($name)] = Str::upper($name);
-                }
-            }
+        $city = self::destinationById($cityId);
 
-            return $options;
+        if (! $city || blank($city->province_name) || blank($city->city_name)) {
+            return [];
+        }
+
+        $cacheKey = 'customer_form:jne:v3:districts:'.md5($city->province_name.'|'.$city->city_name);
+
+        return Cache::remember($cacheKey, now()->addHours(12), function () use ($city): array {
+            return JneDestination::query()
+                ->select('district_name')
+                ->where('province_name', $city->province_name)
+                ->where('city_name', $city->city_name)
+                ->whereNotNull('district_name')
+                ->where('district_name', '!=', '')
+                ->distinct()
+                ->orderBy('district_name')
+                ->pluck('district_name')
+                ->mapWithKeys(function ($districtName): array {
+                    $label = self::toUppercaseLabel($districtName);
+
+                    return $label ? [$label => $label] : [];
+                })
+                ->filter()
+                ->all();
         });
+    }
+
+    private static function destinationById(mixed $id): ?JneDestination
+    {
+        $id = self::normalizeIntegerId($id);
+
+        if (! $id) {
+            return null;
+        }
+
+        return Cache::remember("customer_form:jne:v3:destination:{$id}", now()->addHours(12), function () use ($id): ?JneDestination {
+            return JneDestination::query()->find($id);
+        });
+    }
+
+    private static function provinceNameById(mixed $provinceId): ?string
+    {
+        $destination = self::destinationById($provinceId);
+
+        return $destination && filled($destination->province_name)
+            ? (string) $destination->province_name
+            : null;
     }
 
     private static function normalizeRegionId(mixed $value): ?string
     {
-        return filled($value) ? (string) $value : null;
-    }
-
-    private static function extractRajaOngkirValue(mixed $row, array $keys): mixed
-    {
-        foreach ($keys as $key) {
-            if (is_array($row) && isset($row[$key])) {
-                return $row[$key];
-            }
-            if (is_object($row) && isset($row->{$key})) {
-                return $row->{$key};
-            }
+        if (blank($value)) {
+            return null;
         }
 
-        return null;
+        if (! is_scalar($value)) {
+            return null;
+        }
+
+        $value = trim((string) $value);
+
+        return $value !== '' ? $value : null;
+    }
+
+    private static function normalizeIntegerId(mixed $value): ?int
+    {
+        if (blank($value)) {
+            return null;
+        }
+
+        if (! is_scalar($value)) {
+            return null;
+        }
+
+        $value = trim((string) $value);
+
+        if ($value === '' || ! ctype_digit($value)) {
+            return null;
+        }
+
+        return (int) $value;
     }
 
     private static function toUppercaseLabel(mixed $label): ?string
@@ -578,6 +686,7 @@ class CustomerForm
                         'nik' => 'NIK',
                         default => 'Nomor telepon/WhatsApp',
                     };
+
                     $fail("{$label} ini sudah digunakan oleh ".self::MAX_CONTACT_USAGE.' akun.');
                 }
             };

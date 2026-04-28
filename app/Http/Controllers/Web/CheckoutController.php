@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Checkout\MidtransTokenRequest;
 use App\Http\Requests\Checkout\SaldoPayRequest;
 use App\Models\Customer;
+use App\Models\JneDestination;
 use App\Models\Payment;
 use App\Repositories\Shipping\Contracts\ShippingTargetRepositoryInterface;
 use App\Services\Checkout\CheckoutService;
@@ -13,6 +14,7 @@ use App\Services\Payment\MidtransService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inertia\Response;
 
@@ -77,8 +79,8 @@ class CheckoutController extends Controller
     }
 
     /**
-     * Tarif ongkir Lion Parcel untuk tujuan yang dipilih.
-     * Parameter `district` adalah kode district_lion dari Lion Parcel.
+     * Tarif ongkir untuk tujuan yang dipilih.
+     * Parameter `district` adalah kode district_lion dari.
      */
     public function shippingCost(Request $request): JsonResponse
     {
@@ -87,22 +89,42 @@ class CheckoutController extends Controller
             'city' => ['required', 'string', 'max:255'],
             'district' => ['nullable', 'string', 'max:255'],
         ]);
-        $province = trim((string) $request->input('province'));
-        $city = trim((string) $request->input('city'));
-        $districtLion = trim((string) $request->input('district', ''));
-        $districtLion = $districtLion !== '' ? $districtLion : null;
 
-        /** @var Customer $customer */
+        /** @var Customer|null $customer */
         $customer = auth('customer')->user();
 
-        // Jika district_lion tidak diberikan, coba fallback lookup berdasarkan province + city
-        $destinationLion = $districtLion ?? $this->shippingRepository->findDistrictLion($province, $city);
-
-        if (! $destinationLion) {
-            return response()->json(['message' => 'Tujuan pengiriman tidak tersedia.'], 422);
+        if (! $customer) {
+            return response()->json([
+                'message' => 'Customer tidak terautentikasi.',
+            ], 401);
         }
 
-        $rates = $this->checkoutService->calculateShippingRates($customer, $destinationLion);
+        $province = $this->normalizeJneRegionName($request->input('province'));
+        $city = $this->normalizeJneRegionName($request->input('city'));
+        $district = $this->normalizeJneRegionName($request->input('district'));
+
+        if ($province === '' || $city === '') {
+            return response()->json([
+                'message' => 'Provinsi dan kota tujuan wajib diisi.',
+            ], 422);
+        }
+
+        $destinationCode = $this->resolveJneDestinationTariffCode(
+            province: $province,
+            city: $city,
+            district: $district !== '' ? $district : null,
+        );
+
+        if (! $destinationCode) {
+            return response()->json([
+                'message' => 'Kode tujuan JNE tidak ditemukan. Pastikan provinsi, kota, dan kecamatan sesuai data JNE.',
+            ], 422);
+        }
+
+        $rates = $this->checkoutService->calculateShippingRates(
+            customer: $customer,
+            destinationDistrictLion: $destinationCode,
+        );
 
         return response()->json($rates);
     }
@@ -153,6 +175,7 @@ class CheckoutController extends Controller
 
             return response()->json($result);
         } catch (ValidationException $e) {
+            dd($e->errors());
             return $this->validationFailure($request, $e, 'Gagal membuat token pembayaran Midtrans.');
         } catch (\RuntimeException $e) {
             if ($this->isInertiaRequest($request)) {
@@ -224,5 +247,155 @@ class CheckoutController extends Controller
             'message' => $message,
             'errors' => $exception->errors(),
         ], 422);
+    }
+
+    private function resolveJneDestinationTariffCode(
+        string $province,
+        string $city,
+        ?string $district = null,
+    ): ?string {
+        $province = $this->normalizeJneRegionName($province);
+        $city = $this->normalizeJneRegionName($city);
+        $district = $district !== null ? $this->normalizeJneRegionName($district) : null;
+
+        if ($province === '' || $city === '') {
+            return null;
+        }
+
+        $cityCandidates = $this->cityCandidates($city);
+        $districtCandidates = $district ? $this->districtCandidates($district) : [];
+
+        $query = JneDestination::query()
+            ->whereNotNull('tariff_code')
+            ->where('tariff_code', '!=', '')
+            ->whereRaw('UPPER(TRIM(province_name)) = ?', [$province]);
+
+        $query->where(function ($query) use ($cityCandidates): void {
+            foreach ($cityCandidates as $cityCandidate) {
+                $query->orWhereRaw('UPPER(TRIM(city_name)) = ?', [$cityCandidate]);
+            }
+        });
+
+        if ($districtCandidates !== []) {
+            $query->where(function ($query) use ($districtCandidates): void {
+                foreach ($districtCandidates as $districtCandidate) {
+                    $query
+                        ->orWhereRaw('UPPER(TRIM(district_name)) = ?', [$districtCandidate])
+                        ->orWhereRaw('UPPER(TRIM(subdistrict_name)) = ?', [$districtCandidate]);
+                }
+            });
+        }
+
+        $tariffCode = $query
+            ->orderBy('id')
+            ->value('tariff_code');
+
+        if (filled($tariffCode)) {
+            return Str::upper(trim((string) $tariffCode));
+        }
+
+        /**
+         * Fallback:
+         * Kalau district tidak ketemu, ambil tariff_code pertama berdasarkan provinsi + kota.
+         */
+        $fallbackQuery = JneDestination::query()
+            ->whereNotNull('tariff_code')
+            ->where('tariff_code', '!=', '')
+            ->whereRaw('UPPER(TRIM(province_name)) = ?', [$province]);
+
+        $fallbackQuery->where(function ($query) use ($cityCandidates): void {
+            foreach ($cityCandidates as $cityCandidate) {
+                $query->orWhereRaw('UPPER(TRIM(city_name)) = ?', [$cityCandidate]);
+            }
+        });
+
+        $fallbackTariffCode = $fallbackQuery
+            ->orderBy('id')
+            ->value('tariff_code');
+
+        return filled($fallbackTariffCode)
+            ? Str::upper(trim((string) $fallbackTariffCode))
+            : null;
+    }
+
+    private function normalizeJneRegionName(mixed $value): string
+    {
+        if (! is_scalar($value)) {
+            return '';
+        }
+
+        $value = Str::upper(trim((string) $value));
+
+        if ($value === '') {
+            return '';
+        }
+
+        $value = preg_replace('/\s+/u', ' ', $value);
+
+        return is_string($value) ? trim($value) : '';
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function cityCandidates(string $city): array
+    {
+        $city = $this->normalizeJneRegionName($city);
+
+        if ($city === '') {
+            return [];
+        }
+
+        $withoutPrefix = $this->removeCityPrefix($city);
+
+        return collect([
+            $city,
+            $withoutPrefix,
+        ])
+            ->filter(fn (string $value): bool => $value !== '')
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function districtCandidates(string $district): array
+    {
+        $district = $this->normalizeJneRegionName($district);
+
+        if ($district === '') {
+            return [];
+        }
+
+        /**
+         * Support input lama dari Lion:
+         * "KRONJO, TIGARAKSA"
+         * Maka yang dipakai juga "KRONJO".
+         */
+        $beforeComma = $this->normalizeJneRegionName(Str::before($district, ','));
+
+        return collect([
+            $district,
+            $beforeComma,
+        ])
+            ->filter(fn (string $value): bool => $value !== '')
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function removeCityPrefix(string $city): string
+    {
+        $city = $this->normalizeJneRegionName($city);
+
+        if ($city === '') {
+            return '';
+        }
+
+        $city = preg_replace('/^(KOTA|KABUPATEN|KAB\.|KOTA ADM\.|KABUPATEN ADM\.)\s+/u', '', $city);
+
+        return is_string($city) ? trim($city) : '';
     }
 }

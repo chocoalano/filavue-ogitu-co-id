@@ -2,9 +2,10 @@
 
 namespace App\Filament\Pages;
 
+use App\Models\JneDestination;
+use App\Models\JneOrigin;
 use App\Models\PaymentMethod;
 use App\Models\Setting;
-use App\Services\RajaOngkirService;
 use Filament\Actions\Action;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\ColorPicker;
@@ -425,7 +426,7 @@ class StoreSettings extends Page implements HasSchemas
                                                     return;
                                                 }
 
-                                                if (! is_string($currentDefault) || ! in_array($currentDefault, $selected, true)) {
+                                                if (!is_string($currentDefault) || !in_array($currentDefault, $selected, true)) {
                                                     $set('shipping.default_provider', $selected[0]);
                                                 }
                                             })
@@ -441,24 +442,42 @@ class StoreSettings extends Page implements HasSchemas
 
                                                 return $selected === [] ? [] : array_intersect_key($all, array_flip($selected));
                                             })
-                                            ->disabled(fn (Get $get) => empty((array) ($get('shipping.providers') ?? [])))
-                                            ->required(fn (Get $get) => (bool) ($get('shipping.enabled') ?? false))
+                                            ->disabled(fn(Get $get) => empty((array) ($get('shipping.providers') ?? [])))
+                                            ->required(fn(Get $get) => (bool) ($get('shipping.enabled') ?? false))
                                             ->helperText('Provider utama untuk kalkulasi/tracking.')
                                             ->columnSpanFull(),
 
                                         Placeholder::make('shipping.note')
                                             ->label('Catatan')
-                                            ->content(new HtmlString('<div class="text-sm opacity-80">Setiap provider bisa punya base URL, endpoint, header, dan query dinamis yang disimpan di <code>shipping.providers_config</code>. Secret per provider disimpan di <code>shipping.keys.{provider}</code> (terenkripsi).</div>'))
+                                            ->content(new HtmlString('<div class="text-sm opacity-80">Data origin dan destination JNE diambil dari tabel <code>jne_origins</code> dan <code>jne_destinations</code>. Pilih provider JNE untuk kalkulasi/tracking berbasis integrasi JNE.</div>'))
                                             ->columnSpanFull(),
 
                                         TagsInput::make('shipping.couriers')
                                             ->label('Kurir Aktif (Opsional)')
                                             ->placeholder('Tambah kurir...'),
 
+                                        Select::make('shipping.origin_code')
+                                            ->label('Kode Origin JNE')
+                                            ->helperText('Diambil dari tabel jne_origins. Pilih kode origin JNE untuk gudang/pickup.')
+                                            ->required(fn(Get $get) => (bool) ($get('shipping.enabled') ?? false))
+                                            ->options(fn(): array => $this->originCodeOptions())
+                                            ->searchable()
+                                            ->preload()
+                                            ->live()
+                                            ->native(false)
+                                            ->afterStateUpdated(function (Set $set, mixed $state): void {
+                                                $originCode = $this->normalizeRegionId($state);
+                                                $originOptions = $this->originCodeOptions();
+
+                                                $set('shipping.origin_code_label', $originCode ? ($originOptions[$originCode] ?? null) : null);
+                                            })
+                                            ->columnSpanFull(),
+
                                         Select::make('shipping.origin_province_id')
-                                            ->label('Origin Province')
-                                            ->required(fn (Get $get) => (bool) ($get('shipping.enabled') ?? false))
-                                            ->options(fn () => $this->originProvinceOptions())
+                                            ->label('Provinsi Origin (JNE)')
+                                            ->helperText('Diambil dari kolom province_name pada tabel jne_destinations.')
+                                            ->required(fn(Get $get) => (bool) ($get('shipping.enabled') ?? false))
+                                            ->options(fn(): array => $this->originProvinceOptions())
                                             ->searchable()
                                             ->preload()
                                             ->live()
@@ -475,14 +494,15 @@ class StoreSettings extends Page implements HasSchemas
                                             }),
 
                                         Select::make('shipping.origin_city_id')
-                                            ->label('Origin City')
-                                            ->required(fn (Get $get) => (bool) ($get('shipping.enabled') ?? false))
-                                            ->options(fn (Get $get) => $this->originCityOptions($get('shipping.origin_province_id')))
+                                            ->label('Kota / Kabupaten Origin (JNE)')
+                                            ->helperText('Diambil dari kolom city_name pada tabel jne_destinations berdasarkan provinsi.')
+                                            ->required(fn(Get $get) => (bool) ($get('shipping.enabled') ?? false))
+                                            ->options(fn(Get $get) => $this->originCityOptions($get('shipping.origin_province_id')))
                                             ->searchable()
                                             ->preload()
                                             ->live()
                                             ->native(false)
-                                            ->disabled(fn (Get $get) => blank($get('shipping.origin_province_id')))
+                                            ->disabled(fn(Get $get) => blank($get('shipping.origin_province_id')))
                                             ->afterStateUpdated(function (Set $set, Get $get, mixed $state): void {
                                                 $selectedId = $this->normalizeRegionId($state);
                                                 $cityOptions = $this->originCityOptions($get('shipping.origin_province_id'));
@@ -494,20 +514,28 @@ class StoreSettings extends Page implements HasSchemas
                                             }),
 
                                         Select::make('shipping.origin_district_id')
-                                            ->label('Origin District')
-                                            ->options(fn (Get $get) => $this->originDistrictOptions($get('shipping.origin_city_id')))
+                                            ->label('Kecamatan Origin (JNE)')
+                                            ->helperText('Diambil dari kolom district_name pada tabel jne_destinations berdasarkan provinsi dan kota.')
+                                            ->options(fn(Get $get) => $this->originDistrictOptions(
+                                                $get('shipping.origin_city_id'),
+                                                $get('shipping.origin_province_id'),
+                                            ))
                                             ->searchable()
                                             ->preload()
                                             ->native(false)
-                                            ->disabled(fn (Get $get) => blank($get('shipping.origin_city_id')))
+                                            ->disabled(fn(Get $get) => blank($get('shipping.origin_city_id')))
                                             ->afterStateUpdated(function (Set $set, Get $get, mixed $state): void {
                                                 $selectedId = $this->normalizeRegionId($state);
-                                                $districtOptions = $this->originDistrictOptions($get('shipping.origin_city_id'));
+                                                $districtOptions = $this->originDistrictOptions(
+                                                    $get('shipping.origin_city_id'),
+                                                    $get('shipping.origin_province_id'),
+                                                );
                                                 $districtLabel = $selectedId ? ($districtOptions[$selectedId] ?? null) : null;
 
                                                 $set('shipping.origin_district_label', $this->toUppercaseLabel($districtLabel));
                                             }),
 
+                                        Hidden::make('shipping.origin_code_label'),
                                         Hidden::make('shipping.origin_province_label'),
                                         Hidden::make('shipping.origin_city_label'),
                                         Hidden::make('shipping.origin_district_label'),
@@ -955,7 +983,7 @@ class StoreSettings extends Page implements HasSchemas
         $paymentRows = collect(data_get($state, 'payment_methods.list', []))->filter();
         foreach ($paymentRows as $row) {
             $id = (int) ($row['id'] ?? 0);
-            if (! $id) {
+            if (!$id) {
                 continue;
             }
 
@@ -992,7 +1020,7 @@ class StoreSettings extends Page implements HasSchemas
         $default = $this->getDefaultState();
 
         $keys = collect($this->getSettingPaths())
-            ->flatMap(fn (string $path) => $this->candidateKeys($path))
+            ->flatMap(fn(string $path) => $this->candidateKeys($path))
             ->unique()
             ->values()
             ->all();
@@ -1011,10 +1039,10 @@ class StoreSettings extends Page implements HasSchemas
             }
 
             $row = collect($this->candidateKeys($path))
-                ->map(fn (string $k) => $rows->get($k))
-                ->first(fn ($r) => $r !== null);
+                ->map(fn(string $k) => $rows->get($k))
+                ->first(fn($r) => $r !== null);
 
-            if (! $row) {
+            if (!$row) {
                 continue;
             }
 
@@ -1027,6 +1055,38 @@ class StoreSettings extends Page implements HasSchemas
             PaymentMethod::query()->orderBy('id')->get(['id', 'code', 'name', 'logo', 'display_name', 'is_active'])->toArray()
         );
 
+        return $this->normalizeLegacyShippingProviderState($state);
+    }
+
+    /**
+     * @param  array<string, mixed>  $state
+     * @return array<string, mixed>
+     */
+    protected function normalizeLegacyShippingProviderState(array $state): array
+    {
+        $providers = array_values(array_unique(array_map(
+            fn($provider) => $provider === 'rajaongkir' ? 'jne' : $provider,
+            array_filter((array) data_get($state, 'shipping.providers', [])),
+        )));
+
+        $allowedProviders = array_keys($this->shippingProviderOptions());
+        $providers = array_values(array_filter(
+            $providers,
+            fn($provider) => is_string($provider) && in_array($provider, $allowedProviders, true),
+        ));
+
+        $defaultProvider = data_get($state, 'shipping.default_provider');
+        if ($defaultProvider === 'rajaongkir') {
+            $defaultProvider = 'jne';
+        }
+
+        if (!is_string($defaultProvider) || !in_array($defaultProvider, $providers, true)) {
+            $defaultProvider = $providers[0] ?? null;
+        }
+
+        data_set($state, 'shipping.providers', $providers);
+        data_set($state, 'shipping.default_provider', $defaultProvider);
+
         return $state;
     }
 
@@ -1034,7 +1094,7 @@ class StoreSettings extends Page implements HasSchemas
     {
         $prefix = $this->getKeyPrefix();
 
-        return $prefix ? [$prefix.$path, $path] : [$path];
+        return $prefix ? [$prefix . $path, $path] : [$path];
     }
 
     protected function resolveExistingKeyForWrite(string $path): string
@@ -1053,13 +1113,13 @@ class StoreSettings extends Page implements HasSchemas
             $tenant = null;
         }
 
-        return $tenant ? ('tenant:'.(string) $tenant->getKey().'.') : '';
+        return $tenant ? ('tenant:' . (string) $tenant->getKey() . '.') : '';
     }
 
     protected function shippingProviderOptions(): array
     {
         return [
-            'rajaongkir' => 'RajaOngkir',
+            'jne' => 'JNE',
             'shipper' => 'Shipper',
             'binderbyte' => 'BinderByte',
             'lion_parcel' => 'Lion Parcel (Custom)',
@@ -1070,26 +1130,46 @@ class StoreSettings extends Page implements HasSchemas
     /**
      * @return array<string, string>
      */
+    protected function originCodeOptions(): array
+    {
+        return Cache::remember('store_settings:jne:origins', now()->addHours(6), function (): array {
+            return JneOrigin::query()
+                ->whereNotNull('origin_code')
+                ->where('origin_code', '<>', '')
+                ->whereNotNull('origin_name')
+                ->where('origin_name', '<>', '')
+                ->orderBy('origin_name')
+                ->get(['origin_code', 'origin_name'])
+                ->mapWithKeys(function (JneOrigin $origin): array {
+                    $code = trim((string) $origin->origin_code);
+                    $name = $this->toUppercaseLabel($origin->origin_name) ?? $code;
+
+                    return [$code => "{$name} ({$code})"];
+                })
+                ->all();
+        });
+    }
+
+    /**
+     * @return array<string, string>
+     */
     protected function originProvinceOptions(): array
     {
-        $provinces = Cache::remember('store_settings:rajaongkir:provinces', now()->addHours(6), function (): array {
-            return app(RajaOngkirService::class)->getProvinces();
+        return Cache::remember('store_settings:jne:destinations:provinces', now()->addHours(6), function (): array {
+            return JneDestination::query()
+                ->select('province_name')
+                ->whereNotNull('province_name')
+                ->where('province_name', '<>', '')
+                ->distinct()
+                ->orderBy('province_name')
+                ->pluck('province_name')
+                ->mapWithKeys(function (string $provinceName): array {
+                    $value = trim($provinceName);
+
+                    return [$value => $this->toUppercaseLabel($value) ?? $value];
+                })
+                ->all();
         });
-
-        $options = [];
-
-        foreach ($provinces as $province) {
-            $id = $this->extractRajaOngkirValue($province, ['id', 'province_id']);
-            $name = $this->extractRajaOngkirValue($province, ['province_name', 'province', 'name']);
-
-            if (blank($id) || blank($name)) {
-                continue;
-            }
-
-            $options[(string) $id] = $this->toUppercaseLabel((string) $name);
-        }
-
-        return $options;
     }
 
     /**
@@ -1097,67 +1177,66 @@ class StoreSettings extends Page implements HasSchemas
      */
     protected function originCityOptions(mixed $provinceId): array
     {
-        $provinceId = $this->normalizeRegionId($provinceId);
+        $provinceName = $this->normalizeRegionId($provinceId);
 
-        if ($provinceId === null) {
+        if ($provinceName === null) {
             return [];
         }
 
-        $cacheKey = "store_settings:rajaongkir:cities:{$provinceId}";
+        $cacheKey = 'store_settings:jne:destinations:cities:' . md5($provinceName);
 
-        $cities = Cache::remember($cacheKey, now()->addHours(6), function () use ($provinceId): array {
-            return app(RajaOngkirService::class)->getCities((int) $provinceId);
+        return Cache::remember($cacheKey, now()->addHours(6), function () use ($provinceName): array {
+            return JneDestination::query()
+                ->select('city_name')
+                ->whereRaw('UPPER(province_name) = ?', [Str::upper($provinceName)])
+                ->whereNotNull('city_name')
+                ->where('city_name', '<>', '')
+                ->distinct()
+                ->orderBy('city_name')
+                ->pluck('city_name')
+                ->mapWithKeys(function (string $cityName): array {
+                    $value = trim($cityName);
+
+                    return [$value => $this->toUppercaseLabel($value) ?? $value];
+                })
+                ->all();
         });
-
-        $options = [];
-
-        foreach ($cities as $city) {
-            $id = $this->extractRajaOngkirValue($city, ['id', 'city_id']);
-            $name = $this->extractRajaOngkirValue($city, ['city_name', 'city', 'name']);
-            $type = $this->extractRajaOngkirValue($city, ['type']);
-
-            if (blank($id) || blank($name)) {
-                continue;
-            }
-
-            $label = trim((string) (filled($type) ? "{$type} {$name}" : $name));
-            $options[(string) $id] = $this->toUppercaseLabel($label);
-        }
-
-        return $options;
     }
 
     /**
      * @return array<string, string>
      */
-    protected function originDistrictOptions(mixed $cityId): array
+    protected function originDistrictOptions(mixed $cityId, mixed $provinceId = null): array
     {
-        $cityId = $this->normalizeRegionId($cityId);
+        $cityName = $this->normalizeRegionId($cityId);
+        $provinceName = $this->normalizeRegionId($provinceId);
 
-        if ($cityId === null) {
+        if ($cityName === null) {
             return [];
         }
 
-        $cacheKey = "store_settings:rajaongkir:districts:{$cityId}";
+        $cacheKey = 'store_settings:jne:destinations:districts:' . md5(($provinceName ?? '-') . '|' . $cityName);
 
-        $districts = Cache::remember($cacheKey, now()->addHours(6), function () use ($cityId): array {
-            return app(RajaOngkirService::class)->getDistricts((int) $cityId);
+        return Cache::remember($cacheKey, now()->addHours(6), function () use ($cityName, $provinceName): array {
+            return JneDestination::query()
+                ->select('district_name')
+                ->when(
+                    $provinceName !== null,
+                    fn($query) => $query->whereRaw('UPPER(province_name) = ?', [Str::upper($provinceName)]),
+                )
+                ->whereRaw('UPPER(city_name) = ?', [Str::upper($cityName)])
+                ->whereNotNull('district_name')
+                ->where('district_name', '<>', '')
+                ->distinct()
+                ->orderBy('district_name')
+                ->pluck('district_name')
+                ->mapWithKeys(function (string $districtName): array {
+                    $value = trim($districtName);
+
+                    return [$value => $this->toUppercaseLabel($value) ?? $value];
+                })
+                ->all();
         });
-
-        $options = [];
-
-        foreach ($districts as $district) {
-            $id = $this->extractRajaOngkirValue($district, ['id', 'district_id', 'subdistrict_id']);
-            $name = $this->extractRajaOngkirValue($district, ['district_name', 'subdistrict_name', 'district', 'name']);
-
-            if (blank($id) || blank($name)) {
-                continue;
-            }
-
-            $options[(string) $id] = $this->toUppercaseLabel((string) $name);
-        }
-
-        return $options;
     }
 
     protected function normalizeRegionId(mixed $value): ?string
@@ -1166,7 +1245,7 @@ class StoreSettings extends Page implements HasSchemas
             return null;
         }
 
-        if (! is_scalar($value)) {
+        if (!is_scalar($value)) {
             return null;
         }
 
@@ -1174,28 +1253,16 @@ class StoreSettings extends Page implements HasSchemas
 
         return $stringValue !== '' ? $stringValue : null;
     }
-
-    protected function extractRajaOngkirValue(mixed $row, array $keys): mixed
-    {
-        foreach ($keys as $key) {
-            if (is_array($row) && array_key_exists($key, $row)) {
-                return $row[$key];
-            }
-
-            if (is_object($row) && isset($row->{$key})) {
-                return $row->{$key};
-            }
-        }
-
-        return null;
-    }
-
     /**
      * @param  array<string, mixed>  $state
      * @return array<string, mixed>
      */
     protected function syncShippingOriginLabels(array $state): array
     {
+        $originCode = $this->normalizeRegionId(data_get($state, 'shipping.origin_code'));
+        $originOptions = $this->originCodeOptions();
+        $originCodeLabel = $originCode ? ($originOptions[$originCode] ?? data_get($state, 'shipping.origin_code_label')) : null;
+
         $provinceId = $this->normalizeRegionId(data_get($state, 'shipping.origin_province_id'));
         $provinceOptions = $this->originProvinceOptions();
         $provinceLabel = $provinceId ? ($provinceOptions[$provinceId] ?? data_get($state, 'shipping.origin_province_label')) : null;
@@ -1205,9 +1272,10 @@ class StoreSettings extends Page implements HasSchemas
         $cityLabel = $cityId ? ($cityOptions[$cityId] ?? data_get($state, 'shipping.origin_city_label')) : null;
 
         $districtId = $this->normalizeRegionId(data_get($state, 'shipping.origin_district_id'));
-        $districtOptions = $this->originDistrictOptions($cityId);
+        $districtOptions = $this->originDistrictOptions($cityId, $provinceId);
         $districtLabel = $districtId ? ($districtOptions[$districtId] ?? data_get($state, 'shipping.origin_district_label')) : null;
 
+        data_set($state, 'shipping.origin_code_label', $this->toUppercaseLabel($originCodeLabel));
         data_set($state, 'shipping.origin_province_label', $this->toUppercaseLabel($provinceLabel));
         data_set($state, 'shipping.origin_city_label', $this->toUppercaseLabel($cityLabel));
         data_set($state, 'shipping.origin_district_label', $this->toUppercaseLabel($districtLabel));
@@ -1274,6 +1342,8 @@ class StoreSettings extends Page implements HasSchemas
             'shipping.providers',
             'shipping.default_provider',
             'shipping.couriers',
+            'shipping.origin_code',
+            'shipping.origin_code_label',
             'shipping.origin_province_id',
             'shipping.origin_province_label',
             'shipping.origin_city_id',
@@ -1501,6 +1571,8 @@ class StoreSettings extends Page implements HasSchemas
                 'providers' => [],
                 'default_provider' => null,
                 'couriers' => [],
+                'origin_code' => null,
+                'origin_code_label' => null,
                 'origin_province_id' => null,
                 'origin_province_label' => null,
                 'origin_city_id' => null,

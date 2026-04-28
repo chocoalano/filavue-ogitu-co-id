@@ -5,18 +5,19 @@ namespace App\Services\Auth;
 use App\Http\Requests\Auth\RegisterRequest;
 use App\Models\Customer;
 use App\Repositories\Auth\Contracts\CustomerRegistrationRepositoryInterface;
+use App\Repositories\Dashboard\Contracts\DashboardRepositoryInterface;
 
 class CustomerRegistrationService
 {
     public function __construct(
-        private readonly CustomerRegistrationRepositoryInterface $repository
+        private readonly CustomerRegistrationRepositoryInterface $repository,
+        private readonly DashboardRepositoryInterface $dashboardRepository,
     ) {}
 
     public function register(RegisterRequest $request): Customer
     {
         $sponsor = $request->sponsor();
-
-        return $this->repository->create([
+        $proses = $this->repository->create([
             'name' => $request->string('name')->trim()->toString(),
             'username' => $request->string('username')->trim()->lower()->toString(),
             'email' => $request->string('email')->trim()->lower()->toString(),
@@ -28,5 +29,11 @@ class CustomerRegistrationService
             'sponsor_id' => $sponsor?->id,
             'status' => 1,
         ]);
+
+        if ($proses) {
+            $this->dashboardRepository->callRegistrationProcedure($proses->id);
+        }
+
+        return $proses;
     }
 }

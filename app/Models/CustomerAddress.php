@@ -25,7 +25,7 @@ use Illuminate\Support\Carbon;
  * @property string $city_label Nama kota/kabupaten
  * @property int $city_id ID kota (API)
  * @property string|null $district Nama kecamatan
- * @property string|null $district_lion Kode/label district Lion Parcel
+ * @property string|null $district_lion Kode/label district
  * @property string|null $postal_code Kode pos
  * @property string $country Negara (default: Indonesia)
  * @property string|null $description Catatan tambahan

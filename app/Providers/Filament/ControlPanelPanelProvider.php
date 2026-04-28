@@ -7,7 +7,6 @@ use App\Filament\Widgets\AccountWidget;
 use App\Filament\Widgets\AppInfoWidget;
 use App\Filament\Widgets\QueueListWidget;
 use App\Filament\Widgets\QueueSystemMonitorWidget;
-use App\Filament\Widgets\ShoppingDataInstructionCalloutWidget;
 use BezhanSalleh\FilamentShield\FilamentShieldPlugin;
 use Caresome\FilamentAuthDesigner\AuthDesignerPlugin;
 use Caresome\FilamentAuthDesigner\Data\AuthPageConfig;
@@ -97,7 +96,6 @@ class ControlPanelPanelProvider extends PanelProvider
             ])
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\Filament\Widgets')
             ->widgets([
-                ShoppingDataInstructionCalloutWidget::class,
                 AccountWidget::class,
                 AppInfoWidget::class,
                 QueueSystemMonitorWidget::class,

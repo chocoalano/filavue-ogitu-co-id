@@ -6,13 +6,16 @@ use App\Models\Cart;
 use App\Models\CartItem;
 use App\Models\Customer;
 use App\Models\CustomerAddress;
+use App\Models\JneDestination;
+use App\Models\JneOrigin;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Payment;
 use App\Models\PaymentMethod;
 use App\Models\Setting;
 use App\Repositories\Checkout\Contracts\CheckoutRepositoryInterface;
-use App\Services\Shipping\LionParcelService;
+use App\Services\Jne\JneShippingException;
+use App\Services\Jne\JneShippingService;
 use App\Support\Media\PublicMediaUrl;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -24,7 +27,7 @@ class CheckoutService
 {
     public function __construct(
         protected CheckoutRepositoryInterface $checkoutRepository,
-        protected LionParcelService $lionParcelService,
+        protected JneShippingService $jneShippingService,
     ) {}
 
     /**
@@ -51,7 +54,13 @@ class CheckoutService
     }
 
     /**
-     * Hitung tarif pengiriman Lion Parcel berdasarkan berat dan dimensi keranjang customer.
+     * Hitung tarif pengiriman JNE berdasarkan cart ecommerce.
+     *
+     * Parameter $destinationDistrictLion tetap dipertahankan agar frontend lama tidak rusak.
+     * Sekarang nilainya bisa berupa:
+     * - tariff_code JNE langsung, contoh: BDO10000
+     * - nama kecamatan, contoh: COBLONG
+     * - format lama Lion, contoh: COBLONG, BANDUNG
      *
      * @return list<array{product: string, total_tariff: int, estimasi_sla: string}>
      */
@@ -63,31 +72,44 @@ class CheckoutService
             return [];
         }
 
-        $totalWeightGram = $cart->items->sum(
-            fn (CartItem $item) => $item->qty * ($item->product?->weight_gram ?? 200)
-        );
+        $originCode = $this->resolveJneOriginCode();
+        $destinationCode = $this->resolveJneDestinationCode($customer, $destinationDistrictLion);
+        $items = $this->buildJneCartItems($cart);
 
-        $weightKg = max(1.0, round($totalWeightGram / 1000, 1));
+        try {
+            $result = $this->jneShippingService->checkTariffForCart(
+                originCode: $originCode,
+                destinationCode: $destinationCode,
+                items: $items,
+            );
 
-        $lengthCm = (int) max(10, (int) ceil(
-            $cart->items->max(fn (CartItem $item) => $item->product?->length_mm ?? 100) / 10
-        ));
+            return $this->formatJneRates($result);
+        } catch (JneShippingException $exception) {
+            Log::error('Failed to calculate JNE shipping rates.', [
+                'customer_id' => $customer->id,
+                'origin_code' => $originCode,
+                'destination_code' => $destinationCode,
+                'destination_input' => $destinationDistrictLion,
+                'error' => $exception->getMessage(),
+                'context' => $exception->context(),
+            ]);
 
-        $widthCm = (int) max(10, (int) ceil(
-            $cart->items->max(fn (CartItem $item) => $item->product?->width_mm ?? 100) / 10
-        ));
+            throw ValidationException::withMessages([
+                'shipping' => $exception->getMessage(),
+            ]);
+        } catch (\Throwable $exception) {
+            Log::error('Unexpected error while calculating JNE shipping rates.', [
+                'customer_id' => $customer->id,
+                'origin_code' => $originCode,
+                'destination_code' => $destinationCode,
+                'destination_input' => $destinationDistrictLion,
+                'error' => $exception->getMessage(),
+            ]);
 
-        $heightCm = (int) max(10, (int) ceil(
-            $cart->items->max(fn (CartItem $item) => $item->product?->height_mm ?? 100) / 10
-        ));
-
-        return $this->lionParcelService->getRates(
-            $destinationDistrictLion,
-            $weightKg,
-            $lengthCm,
-            $widthCm,
-            $heightCm,
-        );
+            throw ValidationException::withMessages([
+                'shipping' => 'Gagal menghitung ongkir JNE. Silakan coba lagi.',
+            ]);
+        }
     }
 
     /**
@@ -136,7 +158,7 @@ class CheckoutService
 
             Payment::create([
                 'order_id' => $order->id,
-                'method_id' => PaymentMethod::where('code', 'p-002')->value('id'),
+                'method_id' => PaymentMethod::where('code', 'midtrans')->value('id'),
                 'status' => 'paid',
                 'amount' => $total,
                 'currency' => $cart->currency,
@@ -193,7 +215,7 @@ class CheckoutService
 
             Payment::create([
                 'order_id' => $order->id,
-                'method_id' => PaymentMethod::where('code', 'p-001')->value('id'),
+                'method_id' => PaymentMethod::where('code', 'midtrans')->value('id'),
                 'status' => 'pending',
                 'amount' => $grandTotal,
                 'currency' => $cart->currency,
@@ -290,6 +312,8 @@ class CheckoutService
             'province_id' => $provinceId,
             'city_label' => $addressData['city'],
             'city_id' => $cityId,
+            'district' => $addressData['district'] ?? null,
+            'district_lion' => $addressData['district_lion'] ?? $addressData['district'] ?? null,
             'postal_code' => $addressData['postal_code'] ?? null,
             'description' => $addressData['notes'] ?? null,
             'country' => 'Indonesia',
@@ -319,6 +343,8 @@ class CheckoutService
             ->whereIn('key', [
                 'store.name',
                 'store.phone',
+                'shipping.origin_code',
+                'shipping.origin_tariff_code',
                 'shipping.origin_province_id',
                 'shipping.origin_province_label',
                 'shipping.origin_city_id',
@@ -374,6 +400,10 @@ class CheckoutService
             'postal_code' => $postalCode !== '' ? $postalCode : null,
             'province_id' => $provinceId,
             'city_id' => $cityId,
+            'origin_code' => $this->firstFilledString([
+                $settings['shipping.origin_code'] ?? null,
+                $settings['shipping.origin_tariff_code'] ?? null,
+            ]),
         ];
     }
 
@@ -434,7 +464,7 @@ class CheckoutService
             + (float) $cart->tax_amount
             - (float) $cart->discount_amount;
 
-        $payload = [
+        return [
             'order_no' => 'ORD-'.now()->format('Ymd').'-'.strtoupper(Str::random(6)),
             'customer_id' => $customer->id,
             'currency' => $cart->currency,
@@ -453,8 +483,6 @@ class CheckoutService
             'shipping_address_id' => $shippingAddressId,
             'placed_at' => now(),
         ];
-
-        return $payload;
     }
 
     /**
@@ -517,6 +545,319 @@ class CheckoutService
         }
     }
 
+    /**
+     * Build cart items untuk JneShippingService::checkTariffForCart().
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function buildJneCartItems(Cart $cart): array
+    {
+        return $cart->items
+            ->map(function (CartItem $item): array {
+                return [
+                    'name' => $item->product_name,
+                    'qty' => max(1, (int) $item->qty),
+                    'weight_gram' => (int) ($item->product?->weight_gram ?? 200),
+                    'length_cm' => $this->millimeterToCentimeter($item->product?->length_mm, 100),
+                    'width_cm' => $this->millimeterToCentimeter($item->product?->width_mm, 100),
+                    'height_cm' => $this->millimeterToCentimeter($item->product?->height_mm, 100),
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Format response JNE supaya kompatibel dengan frontend.
+     *
+     * Output lama:
+     * [
+     *     [
+     *         'product' => 'REG',
+     *         'total_tariff' => 12000,
+     *         'estimasi_sla' => '2-3 HARI',
+     *     ]
+     * ]
+     *
+     * @param  array<string, mixed>  $result
+     * @return list<array<string, mixed>>
+     */
+    private function formatJneRates(array $result): array
+    {
+        $services = $result['services'] ?? [];
+
+        if (! is_array($services)) {
+            return [];
+        }
+
+        return collect($services)
+            ->map(function (array $service): ?array {
+                $code = $this->toUppercaseLabel($service['code'] ?? $service['name'] ?? null);
+                $price = (int) ($service['price'] ?? 0);
+
+                if ($code === null || $price <= 0) {
+                    return null;
+                }
+
+                return [
+                    'product' => $code,
+                    'service_code' => $code,
+                    'service_name' => (string) ($service['name'] ?? $code),
+                    'description' => (string) ($service['description'] ?? $service['name'] ?? $code),
+                    'total_tariff' => $price,
+                    'estimasi_sla' => (string) ($service['etd'] ?? '-'),
+                    'currency' => (string) ($service['currency'] ?? 'IDR'),
+                    'raw' => $service['raw'] ?? $service,
+                ];
+            })
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    private function resolveJneOriginCode(): string
+    {
+        $settings = Setting::query()
+            ->whereIn('key', [
+                'shipping.origin_code',
+                'shipping.origin_tariff_code',
+                'shipping.origin_city_id',
+                'shipping.origin_city_label',
+                'shipping.origin_district_label',
+                'address.city',
+            ])
+            ->pluck('value', 'key')
+            ->all();
+
+        $directCode = $this->firstFilledString([
+            $settings['shipping.origin_code'] ?? null,
+            $settings['shipping.origin_tariff_code'] ?? null,
+            config('jne.default_origin_code'),
+            env('JNE_DEFAULT_ORIGIN_CODE'),
+        ]);
+
+        if ($directCode !== null) {
+            return $this->normalizeJneCode($directCode);
+        }
+
+        $originCityId = $this->normalizeIntegerId($settings['shipping.origin_city_id'] ?? null);
+
+        if ($originCityId !== null) {
+            $originCityDestination = JneDestination::query()->find($originCityId);
+
+            if ($originCityDestination && filled($originCityDestination->city_name)) {
+                $originCode = $this->findJneOriginCodeByName((string) $originCityDestination->city_name);
+
+                if ($originCode !== null) {
+                    return $originCode;
+                }
+            }
+        }
+
+        $cityLabel = $this->firstFilledString([
+            $settings['shipping.origin_city_label'] ?? null,
+            $settings['address.city'] ?? null,
+        ]);
+
+        if ($cityLabel !== null) {
+            $originCode = $this->findJneOriginCodeByName($cityLabel);
+
+            if ($originCode !== null) {
+                return $originCode;
+            }
+        }
+
+        throw ValidationException::withMessages([
+            'shipping' => 'Origin JNE belum dikonfigurasi. Isi shipping.origin_code / JNE_DEFAULT_ORIGIN_CODE atau pastikan data JNE origin tersedia.',
+        ]);
+    }
+
+    private function resolveJneDestinationCode(Customer $customer, string $destinationDistrictLion): string
+    {
+        $input = $this->toUppercaseLabel($destinationDistrictLion);
+
+        if ($input === null) {
+            throw ValidationException::withMessages([
+                'shipping' => 'Tujuan pengiriman JNE wajib diisi.',
+            ]);
+        }
+
+        $directTariffCode = JneDestination::query()
+            ->whereNotNull('tariff_code')
+            ->where('tariff_code', '!=', '')
+            ->whereRaw('UPPER(TRIM(tariff_code)) = ?', [$input])
+            ->value('tariff_code');
+
+        if (filled($directTariffCode)) {
+            return $this->normalizeJneCode((string) $directTariffCode);
+        }
+
+        $districtCandidates = $this->districtCandidates($input);
+        $address = $this->findCustomerAddressForDestination($customer, $districtCandidates);
+
+        if ($address) {
+            $tariffCode = $this->findJneTariffCodeFromAddress($address, $districtCandidates);
+
+            if ($tariffCode !== null) {
+                return $tariffCode;
+            }
+        }
+
+        $fallbackTariffCode = $this->findJneTariffCodeGlobally($districtCandidates);
+
+        if ($fallbackTariffCode !== null) {
+            return $fallbackTariffCode;
+        }
+
+        throw ValidationException::withMessages([
+            'shipping' => 'Kode tujuan JNE tidak ditemukan. Pastikan alamat customer memiliki kecamatan yang sesuai dengan data jne_destinations.tariff_code.',
+        ]);
+    }
+
+    /**
+     * @param  list<string>  $districtCandidates
+     */
+    private function findCustomerAddressForDestination(Customer $customer, array $districtCandidates): ?CustomerAddress
+    {
+        return CustomerAddress::query()
+            ->where('customer_id', $customer->id)
+            ->where(function ($query) use ($districtCandidates): void {
+                foreach ($districtCandidates as $district) {
+                    $query
+                        ->orWhereRaw('UPPER(TRIM(district)) = ?', [$district])
+                        ->orWhereRaw('UPPER(TRIM(district_lion)) = ?', [$district]);
+                }
+            })
+            ->latest('is_default')
+            ->latest('id')
+            ->first();
+    }
+
+    /**
+     * @param  list<string>  $districtCandidates
+     */
+    private function findJneTariffCodeFromAddress(CustomerAddress $address, array $districtCandidates): ?string
+    {
+        $cityDestination = null;
+
+        if ($address->city_id) {
+            $cityDestination = JneDestination::query()->find((int) $address->city_id);
+        }
+
+        $provinceName = $cityDestination?->province_name ?: $address->province_label;
+        $cityName = $cityDestination?->city_name ?: $address->city_label;
+
+        if (blank($provinceName) || blank($cityName)) {
+            return null;
+        }
+
+        $query = JneDestination::query()
+            ->whereNotNull('tariff_code')
+            ->where('tariff_code', '!=', '')
+            ->whereRaw('UPPER(TRIM(province_name)) = ?', [$this->normalizeRegionName($provinceName)])
+            ->whereRaw('UPPER(TRIM(city_name)) = ?', [$this->normalizeRegionName($cityName)]);
+
+        $query->where(function ($query) use ($districtCandidates): void {
+            foreach ($districtCandidates as $district) {
+                $query
+                    ->orWhereRaw('UPPER(TRIM(district_name)) = ?', [$district])
+                    ->orWhereRaw('UPPER(TRIM(subdistrict_name)) = ?', [$district]);
+            }
+        });
+
+        $tariffCode = $query
+            ->orderBy('id')
+            ->value('tariff_code');
+
+        return filled($tariffCode) ? $this->normalizeJneCode((string) $tariffCode) : null;
+    }
+
+    /**
+     * @param  list<string>  $districtCandidates
+     */
+    private function findJneTariffCodeGlobally(array $districtCandidates): ?string
+    {
+        $query = JneDestination::query()
+            ->whereNotNull('tariff_code')
+            ->where('tariff_code', '!=', '');
+
+        $query->where(function ($query) use ($districtCandidates): void {
+            foreach ($districtCandidates as $district) {
+                $query
+                    ->orWhereRaw('UPPER(TRIM(district_name)) = ?', [$district])
+                    ->orWhereRaw('UPPER(TRIM(subdistrict_name)) = ?', [$district])
+                    ->orWhereRaw('UPPER(TRIM(city_name)) = ?', [$district]);
+            }
+        });
+
+        $tariffCode = $query
+            ->orderBy('id')
+            ->value('tariff_code');
+
+        return filled($tariffCode) ? $this->normalizeJneCode((string) $tariffCode) : null;
+    }
+
+    private function findJneOriginCodeByName(string $originName): ?string
+    {
+        $normalized = $this->normalizeRegionName($originName);
+        $withoutPrefix = $this->removeCityPrefix($normalized);
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        $query = JneOrigin::query()
+            ->whereNotNull('origin_code')
+            ->where('origin_code', '!=', '');
+
+        $query->where(function ($query) use ($normalized, $withoutPrefix): void {
+            $query
+                ->whereRaw('UPPER(TRIM(origin_name)) = ?', [$normalized])
+                ->orWhereRaw('UPPER(TRIM(origin_name)) = ?', [$withoutPrefix])
+                ->orWhereRaw('UPPER(TRIM(origin_code)) = ?', [$normalized]);
+
+            if ($withoutPrefix !== '') {
+                $query->orWhereRaw('UPPER(TRIM(origin_name)) LIKE ?', ['%'.$withoutPrefix.'%']);
+            }
+        });
+
+        $originCode = $query
+            ->orderBy('id')
+            ->value('origin_code');
+
+        return filled($originCode) ? $this->normalizeJneCode((string) $originCode) : null;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function districtCandidates(string $district): array
+    {
+        $district = $this->normalizeRegionName($district);
+
+        if ($district === '') {
+            return [];
+        }
+
+        $beforeComma = trim(Str::before($district, ','));
+
+        return collect([
+            $district,
+            $beforeComma,
+        ])
+            ->filter(fn (string $value): bool => $value !== '')
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function millimeterToCentimeter(mixed $millimeter, int $fallbackMillimeter = 100): float
+    {
+        $value = is_numeric($millimeter) ? (float) $millimeter : (float) $fallbackMillimeter;
+
+        return max(1.0, $value / 10);
+    }
+
     /** @return list<array<string, mixed>> */
     private function formatItems(Cart $cart): array
     {
@@ -565,9 +906,83 @@ class CheckoutService
             'province_id' => $a->province_id,
             'city' => $a->city_label,
             'city_id' => $a->city_id,
+            'district' => $a->district,
+            'district_lion' => $a->district_lion,
             'postal_code' => $a->postal_code,
             'description' => $a->description,
             'is_default' => $a->is_default,
         ])->toArray();
+    }
+
+    /**
+     * @param  array<int, mixed>  $values
+     */
+    private function firstFilledString(array $values): ?string
+    {
+        foreach ($values as $value) {
+            if (! is_scalar($value)) {
+                continue;
+            }
+
+            $value = trim((string) $value);
+
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return null;
+    }
+
+    private function normalizeIntegerId(mixed $value): ?int
+    {
+        if (blank($value) || ! is_scalar($value)) {
+            return null;
+        }
+
+        $value = trim((string) $value);
+
+        if ($value === '' || ! ctype_digit($value)) {
+            return null;
+        }
+
+        return (int) $value;
+    }
+
+    private function normalizeJneCode(string $code): string
+    {
+        return Str::upper(trim($code));
+    }
+
+    private function normalizeRegionName(mixed $value): string
+    {
+        if (blank($value) || ! is_scalar($value)) {
+            return '';
+        }
+
+        $normalized = Str::upper(trim((string) $value));
+        $normalized = preg_replace('/\s+/u', ' ', $normalized);
+
+        return is_string($normalized) ? trim($normalized) : '';
+    }
+
+    private function toUppercaseLabel(mixed $label): ?string
+    {
+        $normalized = $this->normalizeRegionName($label);
+
+        return $normalized !== '' ? $normalized : null;
+    }
+
+    private function removeCityPrefix(string $city): string
+    {
+        $city = $this->normalizeRegionName($city);
+
+        if ($city === '') {
+            return '';
+        }
+
+        $city = preg_replace('/^(KOTA|KABUPATEN|KAB\.|KOTA ADM\.|KABUPATEN ADM\.)\s+/u', '', $city);
+
+        return is_string($city) ? trim($city) : '';
     }
 }

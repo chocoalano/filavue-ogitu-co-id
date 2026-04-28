@@ -1,127 +1,242 @@
 <?php
 
+use App\Models\JneDestination;
 use App\Repositories\Shipping\EloquentShippingTargetRepository;
-use App\Services\RajaOngkirService;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 beforeEach(function (): void {
     config()->set('database.default', 'sqlite');
     config()->set('database.connections.sqlite.database', ':memory:');
+
     DB::purge('sqlite');
     DB::reconnect('sqlite');
 
-    Schema::dropIfExists('shipping_targets');
+    Cache::flush();
 
-    Schema::create('shipping_targets', function (Blueprint $table): void {
+    Schema::dropIfExists('jne_destinations');
+
+    Schema::create('jne_destinations', function (Blueprint $table): void {
         $table->id();
-        $table->string('three_lc_code')->nullable();
-        $table->string('country')->default('ID');
-        $table->unsignedBigInteger('province_id')->nullable()->index();
-        $table->string('province')->nullable();
-        $table->unsignedBigInteger('city_id')->nullable()->index();
-        $table->string('city')->nullable();
-        $table->string('district')->nullable();
-        $table->string('district_lion')->nullable();
+        $table->string('country_name')->nullable();
+        $table->string('province_name')->nullable()->index();
+        $table->string('city_name')->nullable()->index();
+        $table->string('district_name')->nullable()->index();
+        $table->string('subdistrict_name')->nullable()->index();
+        $table->string('zip_code', 20)->nullable()->index();
+        $table->string('tariff_code', 50)->nullable()->index();
+        $table->timestamps();
     });
 
-    $rajaOngkir = Mockery::mock(RajaOngkirService::class);
-    $rajaOngkir->shouldReceive('getProvinces')->andReturn([]);
-    app()->instance(RajaOngkirService::class, $rajaOngkir);
-});
-
-it('backfills missing region ids when loading province options', function (): void {
-    DB::table('shipping_targets')->insert([
+    DB::table('jne_destinations')->insert([
         [
-            'country' => 'ID',
-            'province_id' => null,
-            'province' => 'Jawa Barat',
-            'city_id' => null,
-            'city' => 'Bandung',
-            'district' => 'Coblong',
-            'district_lion' => 'COBLONG',
+            'country_name' => 'INDONESIA',
+            'province_name' => 'JAWA BARAT',
+            'city_name' => 'BANDUNG',
+            'district_name' => 'COBLONG',
+            'subdistrict_name' => 'DAGO',
+            'zip_code' => '40135',
+            'tariff_code' => 'BDO10000',
+            'created_at' => now(),
+            'updated_at' => now(),
         ],
         [
-            'country' => 'ID',
-            'province_id' => null,
-            'province' => 'Jawa Barat',
-            'city_id' => null,
-            'city' => 'Bandung',
-            'district' => 'Sukajadi',
-            'district_lion' => 'SUKAJADI',
+            'country_name' => 'INDONESIA',
+            'province_name' => 'JAWA BARAT',
+            'city_name' => 'BANDUNG',
+            'district_name' => 'SUKAJADI',
+            'subdistrict_name' => 'SUKAJADI',
+            'zip_code' => '40162',
+            'tariff_code' => 'BDO10000',
+            'created_at' => now(),
+            'updated_at' => now(),
         ],
         [
-            'country' => 'ID',
-            'province_id' => null,
-            'province' => 'Jawa Tengah',
-            'city_id' => null,
-            'city' => 'Semarang',
-            'district' => 'Tembalang',
-            'district_lion' => 'TEMBALANG',
+            'country_name' => 'INDONESIA',
+            'province_name' => 'JAWA TENGAH',
+            'city_name' => 'SEMARANG',
+            'district_name' => 'TEMBALANG',
+            'subdistrict_name' => 'TEMBALANG',
+            'zip_code' => '50275',
+            'tariff_code' => 'SRG10000',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ],
+        [
+            'country_name' => 'INDONESIA',
+            'province_name' => 'DKI JAKARTA',
+            'city_name' => 'JAKARTA SELATAN',
+            'district_name' => 'KEBAYORAN BARU',
+            'subdistrict_name' => 'GUNUNG',
+            'zip_code' => '12120',
+            'tariff_code' => 'CGK10000',
+            'created_at' => now(),
+            'updated_at' => now(),
         ],
     ]);
+});
 
-    $repository = new EloquentShippingTargetRepository;
+afterEach(function (): void {
+    Cache::flush();
+});
+
+it('loads province, city, and district options from jne destinations', function (): void {
+    $repository = new EloquentShippingTargetRepository();
+
     $provinceOptions = $repository->provinceOptions();
     $cityOptions = $repository->cityOptions();
     $districtOptions = $repository->districtOptions();
 
-    expect($provinceOptions)->toHaveCount(2)
-        ->and($cityOptions)->toHaveCount(2)
-        ->and($districtOptions)->toHaveCount(3);
+    expect($provinceOptions)->toHaveCount(3)
+        ->and($cityOptions)->toHaveCount(3)
+        ->and($districtOptions)->toHaveCount(4);
 
-    $remainingMissingIds = DB::table('shipping_targets')
-        ->whereNull('province_id')
-        ->orWhereNull('city_id')
-        ->count();
+    expect(collect($provinceOptions)->pluck('label')->all())
+        ->toContain('DKI JAKARTA')
+        ->toContain('JAWA BARAT')
+        ->toContain('JAWA TENGAH');
 
-    expect($remainingMissingIds)->toBe(0);
+    expect(collect($cityOptions)->pluck('label')->all())
+        ->toContain('BANDUNG')
+        ->toContain('SEMARANG')
+        ->toContain('JAKARTA SELATAN');
 
-    $bandungCity = collect($cityOptions)->first(
-        fn (array $city): bool => $city['label'] === 'Bandung'
-    );
-
-    expect($bandungCity)->not->toBeNull()
-        ->and((int) ($bandungCity['province_id'] ?? 0))->toBeGreaterThan(0)
-        ->and((int) ($bandungCity['id'] ?? 0))->toBeGreaterThan(0);
+    expect(collect($districtOptions)->pluck('label')->all())
+        ->toContain('COBLONG')
+        ->toContain('SUKAJADI')
+        ->toContain('TEMBALANG')
+        ->toContain('KEBAYORAN BARU');
 });
 
-it('uses rajaongkir province ordering while keeping local province ids', function (): void {
-    DB::table('shipping_targets')->insert([
-        [
-            'country' => 'ID',
-            'province_id' => 10,
-            'province' => 'Jawa Barat',
-            'city_id' => 110,
-            'city' => 'Bandung',
-            'district' => 'Coblong',
-            'district_lion' => 'COBLONG',
-        ],
-        [
-            'country' => 'ID',
-            'province_id' => 20,
-            'province' => 'DKI Jakarta',
-            'city_id' => 120,
-            'city' => 'Jakarta Selatan',
-            'district' => 'Kebayoran Baru',
-            'district_lion' => 'KEBAYORAN BARU',
-        ],
+it('returns district options by city id from jne destinations', function (): void {
+    $repository = new EloquentShippingTargetRepository();
+
+    $bandungCityId = JneDestination::query()
+        ->where('province_name', 'JAWA BARAT')
+        ->where('city_name', 'BANDUNG')
+        ->min('id');
+
+    $districtOptions = $repository->districtOptionsByCityId((int) $bandungCityId);
+
+    expect($districtOptions)->toHaveCount(2);
+
+    expect(collect($districtOptions)->pluck('label')->all())
+        ->toContain('COBLONG')
+        ->toContain('SUKAJADI');
+
+    expect(collect($districtOptions)->pluck('district_lion')->all())
+        ->toContain('COBLONG')
+        ->toContain('SUKAJADI');
+
+    foreach ($districtOptions as $district) {
+        expect($district)
+            ->toHaveKeys(['id', 'city_id', 'label', 'district_lion'])
+            ->and($district['city_id'])->toBe((int) $bandungCityId)
+            ->and($district['id'])->toBeGreaterThan(0);
+    }
+});
+
+it('returns cities by province name from jne destinations', function (): void {
+    $repository = new EloquentShippingTargetRepository();
+
+    $cities = $repository->citiesByProvince('Jawa Barat');
+
+    expect($cities)->toHaveCount(1)
+        ->and($cities[0])->toBe('BANDUNG');
+});
+
+it('returns districts by province and city name from jne destinations', function (): void {
+    $repository = new EloquentShippingTargetRepository();
+
+    $districts = $repository->districtsByProvinceAndCity('Jawa Barat', 'Bandung');
+
+    expect($districts)->toHaveCount(2);
+
+    expect($districts)->toContain([
+        'label' => 'COBLONG',
+        'value' => 'COBLONG',
     ]);
 
-    $rajaOngkir = Mockery::mock(RajaOngkirService::class);
-    $rajaOngkir->shouldReceive('getProvinces')->andReturn([
-        ['province_id' => 31, 'province_name' => 'DKI Jakarta'],
-        ['province_id' => 32, 'province_name' => 'Jawa Barat'],
+    expect($districts)->toContain([
+        'label' => 'SUKAJADI',
+        'value' => 'SUKAJADI',
     ]);
-    app()->instance(RajaOngkirService::class, $rajaOngkir);
+});
 
-    $repository = new EloquentShippingTargetRepository;
-    $provinceOptions = $repository->provinceOptions();
+it('finds city by jne region ids', function (): void {
+    $repository = new EloquentShippingTargetRepository();
 
-    expect($provinceOptions)->toHaveCount(2)
-        ->and($provinceOptions[0]['label'])->toBe('DKI Jakarta')
-        ->and($provinceOptions[0]['id'])->toBe(20)
-        ->and($provinceOptions[1]['label'])->toBe('Jawa Barat')
-        ->and($provinceOptions[1]['id'])->toBe(10);
+    $provinceId = JneDestination::query()
+        ->where('province_name', 'JAWA BARAT')
+        ->min('id');
+
+    $cityId = JneDestination::query()
+        ->where('province_name', 'JAWA BARAT')
+        ->where('city_name', 'BANDUNG')
+        ->min('id');
+
+    $city = $repository->findCityByIds((int) $provinceId, (int) $cityId);
+
+    expect($city)->not->toBeNull()
+        ->and($city['province_id'])->toBe((int) $provinceId)
+        ->and($city['province_label'])->toBe('JAWA BARAT')
+        ->and($city['city_id'])->toBe((int) $cityId)
+        ->and($city['city_label'])->toBe('BANDUNG');
+});
+
+it('finds district by jne region ids', function (): void {
+    $repository = new EloquentShippingTargetRepository();
+
+    $provinceId = JneDestination::query()
+        ->where('province_name', 'JAWA BARAT')
+        ->min('id');
+
+    $cityId = JneDestination::query()
+        ->where('province_name', 'JAWA BARAT')
+        ->where('city_name', 'BANDUNG')
+        ->min('id');
+
+    $district = $repository->findDistrictByRegionIds(
+        provinceId: (int) $provinceId,
+        cityId: (int) $cityId,
+        district: 'Coblong',
+    );
+
+    expect($district)->not->toBeNull()
+        ->and($district['district'])->toBe('COBLONG')
+        ->and($district['district_lion'])->toBe('COBLONG');
+});
+
+it('finds district lion from jne destinations', function (): void {
+    $repository = new EloquentShippingTargetRepository();
+
+    $districtLion = $repository->findDistrictLion(
+        province: 'Jawa Barat',
+        city: 'Bandung',
+        district: 'Coblong',
+    );
+
+    expect($districtLion)->toBe('COBLONG');
+});
+
+it('returns null when city ids are not from the same province', function (): void {
+    $repository = new EloquentShippingTargetRepository();
+
+    $jawaBaratProvinceId = JneDestination::query()
+        ->where('province_name', 'JAWA BARAT')
+        ->min('id');
+
+    $semarangCityId = JneDestination::query()
+        ->where('province_name', 'JAWA TENGAH')
+        ->where('city_name', 'SEMARANG')
+        ->min('id');
+
+    $city = $repository->findCityByIds(
+        provinceId: (int) $jawaBaratProvinceId,
+        cityId: (int) $semarangCityId,
+    );
+
+    expect($city)->toBeNull();
 });

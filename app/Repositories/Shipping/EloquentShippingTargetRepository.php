@@ -2,424 +2,545 @@
 
 namespace App\Repositories\Shipping;
 
-use App\Models\ShippingTarget;
+use App\Models\JneDestination;
 use App\Repositories\Shipping\Contracts\ShippingTargetRepositoryInterface;
-use App\Services\RajaOngkirService;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class EloquentShippingTargetRepository implements ShippingTargetRepositoryInterface
 {
     public function provinceOptions(): array
     {
-        $this->ensureRegionIds();
-
-        $localProvinces = ShippingTarget::query()
-            ->selectRaw('MIN(province_id) as id, province as label')
-            ->whereNotNull('province_id')
-            ->whereNotNull('province')
-            ->where('province', '!=', '')
-            ->groupBy('province')
-            ->orderBy('label')
-            ->get()
-            ->map(fn (ShippingTarget $province): array => [
-                'id' => (int) $province->id,
-                'label' => (string) $province->label,
-            ])
-            ->toArray();
-
-        $rajaOngkirProvinces = Cache::remember(
-            'dashboard:address:rajaongkir:provinces',
-            now()->addHours(6),
-            fn (): array => app(RajaOngkirService::class)->getProvinces(),
-        );
-
-        if ($rajaOngkirProvinces === []) {
-            return $localProvinces;
-        }
-
-        $localProvinceIdByName = collect($localProvinces)
-            ->mapWithKeys(fn (array $province): array => [
-                $this->normalizeProvinceLabel((string) ($province['label'] ?? '')) => (int) ($province['id'] ?? 0),
-            ])
-            ->filter(fn (int $id): bool => $id > 0)
-            ->all();
-
-        $ordered = [];
-
-        foreach ($rajaOngkirProvinces as $province) {
-            $label = $this->extractRegionValue($province, ['province_name', 'province', 'name']);
-
-            if (! is_string($label) || trim($label) === '') {
-                continue;
-            }
-
-            $normalizedLabel = $this->normalizeProvinceLabel($label);
-            $localId = $localProvinceIdByName[$normalizedLabel] ?? null;
-
-            if (! is_int($localId) || $localId < 1) {
-                continue;
-            }
-
-            $ordered[] = [
-                'id' => $localId,
-                'label' => trim($label),
-            ];
-        }
-
-        if ($ordered === []) {
-            return $localProvinces;
-        }
-
-        $orderedKeys = collect($ordered)
-            ->map(fn (array $province): string => $this->normalizeProvinceLabel((string) ($province['label'] ?? '')))
-            ->all();
-
-        $remaining = collect($localProvinces)
-            ->reject(fn (array $province): bool => in_array(
-                $this->normalizeProvinceLabel((string) ($province['label'] ?? '')),
-                $orderedKeys,
-                true
-            ))
-            ->values()
-            ->all();
-
-        return [...$ordered, ...$remaining];
+        return $this->jneProvinceOptions();
     }
 
     public function cityOptions(): array
     {
-        $this->ensureRegionIds();
-
-        return ShippingTarget::query()
-            ->selectRaw('MIN(city_id) as id, MIN(province_id) as province_id, city as label')
-            ->whereNotNull('city_id')
-            ->whereNotNull('province_id')
-            ->whereNotNull('city')
-            ->where('city', '!=', '')
-            ->groupBy('province', 'city')
-            ->orderBy('label')
-            ->get()
-            ->map(fn (ShippingTarget $city): array => [
-                'id' => (int) $city->id,
-                'province_id' => (int) $city->province_id,
-                'label' => (string) $city->label,
-            ])
-            ->toArray();
+        return $this->jneCityOptions();
     }
 
     public function districtOptions(): array
     {
-        $this->ensureRegionIds();
-
-        return ShippingTarget::query()
-            ->selectRaw('MIN(id) as id, MIN(province_id) as province_id, MIN(city_id) as city_id, district as label, MIN(district_lion) as district_lion')
-            ->whereNotNull('province_id')
-            ->whereNotNull('city_id')
-            ->whereNotNull('district')
-            ->where('district', '!=', '')
-            ->whereNotNull('district_lion')
-            ->where('district_lion', '!=', '')
-            ->groupBy('province', 'city', 'district')
-            ->orderBy('label')
-            ->get()
-            ->map(fn (ShippingTarget $district): array => [
-                'id' => (int) $district->id,
-                'province_id' => (int) $district->province_id,
-                'city_id' => (int) $district->city_id,
-                'label' => (string) $district->label,
-                'district_lion' => (string) $district->district_lion,
-            ])
-            ->toArray();
+        return $this->jneDistrictOptions();
     }
 
-    /** @return list<array{id:int,city_id:int,label:string,district_lion:string}> */
+    /**
+     * @return list<array{id:int,city_id:int,label:string,district_lion:string}>
+     */
     public function districtOptionsByCityId(int $cityId): array
     {
-        $this->ensureRegionIds();
+        if ($cityId < 1) {
+            return [];
+        }
 
-        return ShippingTarget::query()
-            ->selectRaw('MIN(id) as id, MIN(city_id) as city_id, district as label, MIN(district_lion) as district_lion')
-            ->where('city_id', $cityId)
-            ->whereNotNull('district')
-            ->where('district', '!=', '')
-            ->whereNotNull('district_lion')
-            ->where('district_lion', '!=', '')
-            ->groupBy('district')
-            ->orderBy('label')
-            ->get()
-            ->map(fn (ShippingTarget $district): array => [
-                'id' => (int) $district->id,
-                'city_id' => (int) $district->city_id,
-                'label' => (string) $district->label,
-                'district_lion' => (string) $district->district_lion,
-            ])
-            ->toArray();
+        $city = $this->destinationById($cityId);
+
+        if (! $city || blank($city->province_name) || blank($city->city_name)) {
+            return [];
+        }
+
+        $provinceName = (string) $city->province_name;
+        $cityName = (string) $city->city_name;
+
+        $cacheKey = 'shipping_repository:jne:v1:districts_by_city:' . md5($provinceName . '|' . $cityName);
+
+        return Cache::remember($cacheKey, now()->addHours(12), function () use ($cityId, $provinceName, $cityName): array {
+            return JneDestination::query()
+                ->selectRaw('MIN(id) as id, district_name')
+                ->where('province_name', $provinceName)
+                ->where('city_name', $cityName)
+                ->whereNotNull('district_name')
+                ->where('district_name', '!=', '')
+                ->groupBy('district_name')
+                ->orderBy('district_name')
+                ->get()
+                ->map(function ($row) use ($cityId): ?array {
+                    $id = $this->normalizeIntegerId($row->id);
+                    $label = $this->toUppercaseLabel($row->district_name);
+
+                    if ($id === null || $label === null) {
+                        return null;
+                    }
+
+                    return [
+                        'id' => $id,
+                        'city_id' => $cityId,
+                        'label' => $label,
+                        'district_lion' => $label,
+                    ];
+                })
+                ->filter()
+                ->values()
+                ->all();
+        });
     }
 
     public function provinces(): array
     {
-        return ShippingTarget::query()
-            ->distinct()
-            ->orderBy('province')
-            ->pluck('province')
-            ->toArray();
+        return Cache::remember('shipping_repository:jne:v1:province_names', now()->addHours(12), function (): array {
+            return JneDestination::query()
+                ->whereNotNull('province_name')
+                ->where('province_name', '!=', '')
+                ->distinct()
+                ->orderBy('province_name')
+                ->pluck('province_name')
+                ->map(fn (mixed $province): ?string => $this->toUppercaseLabel($province))
+                ->filter()
+                ->values()
+                ->all();
+        });
     }
 
     public function citiesByProvince(string $province): array
     {
-        return ShippingTarget::query()
-            ->where('province', $province)
-            ->distinct()
-            ->orderBy('city')
-            ->pluck('city')
-            ->toArray();
+        $provinceName = $this->findProvinceName($province);
+
+        if ($provinceName === null) {
+            return [];
+        }
+
+        $cacheKey = 'shipping_repository:jne:v1:cities_by_province:' . md5($provinceName);
+
+        return Cache::remember($cacheKey, now()->addHours(12), function () use ($provinceName): array {
+            return JneDestination::query()
+                ->where('province_name', $provinceName)
+                ->whereNotNull('city_name')
+                ->where('city_name', '!=', '')
+                ->distinct()
+                ->orderBy('city_name')
+                ->pluck('city_name')
+                ->map(fn (mixed $city): ?string => $this->toUppercaseLabel($city))
+                ->filter()
+                ->values()
+                ->all();
+        });
     }
 
     public function districtsByProvinceAndCity(string $province, string $city): array
     {
-        return ShippingTarget::query()
-            ->select('district', 'district_lion')
-            ->where('province', $province)
-            ->where('city', $city)
-            ->whereNotNull('district_lion')
-            ->where('district_lion', '!=', '')
-            ->distinct()
-            ->orderBy('district')
-            ->get()
-            ->map(fn (ShippingTarget $row): array => [
-                'label' => (string) $row->district_lion,
-                'value' => (string) $row->district_lion,
-            ])
-            ->toArray();
+        $region = $this->findRegionByNames($province, $city);
+
+        if ($region === null) {
+            return [];
+        }
+
+        $provinceName = $region['province_name'];
+        $cityName = $region['city_name'];
+
+        $cacheKey = 'shipping_repository:jne:v1:districts_by_province_city:' . md5($provinceName . '|' . $cityName);
+
+        return Cache::remember($cacheKey, now()->addHours(12), function () use ($provinceName, $cityName): array {
+            return JneDestination::query()
+                ->where('province_name', $provinceName)
+                ->where('city_name', $cityName)
+                ->whereNotNull('district_name')
+                ->where('district_name', '!=', '')
+                ->distinct()
+                ->orderBy('district_name')
+                ->pluck('district_name')
+                ->map(function (mixed $districtName): ?array {
+                    $label = $this->toUppercaseLabel($districtName);
+
+                    if ($label === null) {
+                        return null;
+                    }
+
+                    return [
+                        'label' => $label,
+                        'value' => $label,
+                    ];
+                })
+                ->filter()
+                ->values()
+                ->all();
+        });
     }
 
     public function findDistrictLion(string $province, string $city, ?string $district = null): ?string
     {
-        $query = ShippingTarget::query()
-            ->where('province', $province)
-            ->where('city', $city)
-            ->whereNotNull('district_lion');
+        $region = $this->findRegionByNames($province, $city);
 
-        $normalizedDistrict = $district !== null ? trim($district) : null;
-
-        if ($normalizedDistrict !== null && $normalizedDistrict !== '') {
-            $query->where('district', $normalizedDistrict);
+        if ($region === null) {
+            return null;
         }
 
-        return $query->value('district_lion');
+        $query = JneDestination::query()
+            ->where('province_name', $region['province_name'])
+            ->where('city_name', $region['city_name'])
+            ->whereNotNull('district_name')
+            ->where('district_name', '!=', '');
+
+        $normalizedDistrict = $district !== null ? $this->toUppercaseLabel($district) : null;
+
+        if ($normalizedDistrict !== null) {
+            $query->whereRaw('UPPER(TRIM(district_name)) = ?', [$normalizedDistrict]);
+        }
+
+        $districtName = $query
+            ->orderBy('district_name')
+            ->value('district_name');
+
+        return $this->toUppercaseLabel($districtName);
     }
 
     public function findCityByIds(int $provinceId, int $cityId): ?array
     {
-        $this->ensureRegionIds();
-
         if ($provinceId < 1 || $cityId < 1) {
             return null;
         }
 
-        $city = ShippingTarget::query()
-            ->selectRaw('MIN(province_id) as province_id, MIN(city_id) as city_id, province as province_label, city as city_label')
-            ->where('province_id', $provinceId)
-            ->where('city_id', $cityId)
-            ->whereNotNull('province')
-            ->whereNotNull('city')
-            ->groupBy('province', 'city')
-            ->first();
+        $province = $this->destinationById($provinceId);
+        $city = $this->destinationById($cityId);
 
-        if (! $city) {
+        if (
+            ! $province ||
+            ! $city ||
+            blank($province->province_name) ||
+            blank($city->province_name) ||
+            blank($city->city_name)
+        ) {
+            return null;
+        }
+
+        if ($this->normalizeRegionName($province->province_name) !== $this->normalizeRegionName($city->province_name)) {
             return null;
         }
 
         return [
-            'province_id' => (int) $city->province_id,
-            'province_label' => (string) $city->province_label,
-            'city_id' => (int) $city->city_id,
-            'city_label' => (string) $city->city_label,
+            'province_id' => $provinceId,
+            'province_label' => $this->toUppercaseLabel($province->province_name),
+            'city_id' => $cityId,
+            'city_label' => $this->toUppercaseLabel($city->city_name),
         ];
     }
 
     public function findDistrictByRegionIds(int $provinceId, int $cityId, ?string $district = null): ?array
     {
-        $this->ensureRegionIds();
-
         if ($provinceId < 1 || $cityId < 1) {
             return null;
         }
 
-        $normalizedDistrict = $district !== null ? trim($district) : null;
+        $city = $this->destinationById($cityId);
+        $province = $this->destinationById($provinceId);
 
-        $query = ShippingTarget::query()
-            ->selectRaw('district, district_lion')
-            ->where('province_id', $provinceId)
-            ->where('city_id', $cityId)
-            ->whereNotNull('district')
-            ->where('district', '!=', '')
-            ->whereNotNull('district_lion')
-            ->where('district_lion', '!=', '');
+        if (
+            ! $province ||
+            ! $city ||
+            blank($province->province_name) ||
+            blank($city->province_name) ||
+            blank($city->city_name)
+        ) {
+            return null;
+        }
 
-        if ($normalizedDistrict !== null && $normalizedDistrict !== '') {
-            $query->where('district', $normalizedDistrict);
+        if ($this->normalizeRegionName($province->province_name) !== $this->normalizeRegionName($city->province_name)) {
+            return null;
+        }
+
+        $query = JneDestination::query()
+            ->where('province_name', $city->province_name)
+            ->where('city_name', $city->city_name)
+            ->whereNotNull('district_name')
+            ->where('district_name', '!=', '');
+
+        $normalizedDistrict = $district !== null ? $this->toUppercaseLabel($district) : null;
+
+        if ($normalizedDistrict !== null) {
+            $query->whereRaw('UPPER(TRIM(district_name)) = ?', [$normalizedDistrict]);
         }
 
         $districtRow = $query
-            ->orderBy('district')
+            ->select('district_name')
+            ->orderBy('district_name')
             ->first();
 
-        if (! $districtRow) {
+        if (! $districtRow || blank($districtRow->district_name)) {
+            return null;
+        }
+
+        $label = $this->toUppercaseLabel($districtRow->district_name);
+
+        if ($label === null) {
             return null;
         }
 
         return [
-            'district' => (string) $districtRow->district,
-            'district_lion' => (string) $districtRow->district_lion,
+            'district' => $label,
+            'district_lion' => $label,
         ];
     }
 
-    private function ensureRegionIds(): void
+    /**
+     * @return list<array{id:int,label:string}>
+     */
+    private function jneProvinceOptions(): array
     {
-        if (! DB::table('shipping_targets')->whereNull('province_id')->orWhereNull('city_id')->exists()) {
-            return;
-        }
+        return Cache::remember('shipping_repository:jne:v1:province_options', now()->addHours(12), function (): array {
+            return JneDestination::query()
+                ->selectRaw('MIN(id) as id, province_name')
+                ->whereNotNull('province_name')
+                ->where('province_name', '!=', '')
+                ->groupBy('province_name')
+                ->orderBy('province_name')
+                ->get()
+                ->map(function ($row): ?array {
+                    $id = $this->normalizeIntegerId($row->id);
+                    $label = $this->toUppercaseLabel($row->province_name);
 
-        $this->backfillProvinceIds();
-        $this->backfillCityIds();
+                    if ($id === null || $label === null) {
+                        return null;
+                    }
+
+                    return [
+                        'id' => $id,
+                        'label' => $label,
+                    ];
+                })
+                ->filter()
+                ->values()
+                ->all();
+        });
+    }
+
+    /**
+     * @return list<array{id:int,province_id:int,label:string}>
+     */
+    private function jneCityOptions(): array
+    {
+        return Cache::remember('shipping_repository:jne:v1:city_options', now()->addHours(12), function (): array {
+            $provinceIdByName = $this->provinceIdByName();
+
+            return JneDestination::query()
+                ->selectRaw('MIN(id) as id, province_name, city_name')
+                ->whereNotNull('province_name')
+                ->where('province_name', '!=', '')
+                ->whereNotNull('city_name')
+                ->where('city_name', '!=', '')
+                ->groupBy('province_name', 'city_name')
+                ->orderBy('city_name')
+                ->get()
+                ->map(function ($row) use ($provinceIdByName): ?array {
+                    $id = $this->normalizeIntegerId($row->id);
+                    $label = $this->toUppercaseLabel($row->city_name);
+                    $provinceKey = $this->normalizeRegionName($row->province_name);
+                    $provinceId = $provinceIdByName[$provinceKey] ?? null;
+
+                    if ($id === null || $provinceId === null || $label === null) {
+                        return null;
+                    }
+
+                    return [
+                        'id' => $id,
+                        'province_id' => $provinceId,
+                        'label' => $label,
+                    ];
+                })
+                ->filter()
+                ->values()
+                ->all();
+        });
+    }
+
+    /**
+     * @return list<array{id:int,province_id:int,city_id:int,label:string,district_lion:string}>
+     */
+    private function jneDistrictOptions(): array
+    {
+        return Cache::remember('shipping_repository:jne:v1:district_options', now()->addHours(12), function (): array {
+            $provinceIdByName = $this->provinceIdByName();
+            $cityIdByProvinceAndName = $this->cityIdByProvinceAndName();
+
+            return JneDestination::query()
+                ->selectRaw('MIN(id) as id, province_name, city_name, district_name')
+                ->whereNotNull('province_name')
+                ->where('province_name', '!=', '')
+                ->whereNotNull('city_name')
+                ->where('city_name', '!=', '')
+                ->whereNotNull('district_name')
+                ->where('district_name', '!=', '')
+                ->groupBy('province_name', 'city_name', 'district_name')
+                ->orderBy('district_name')
+                ->get()
+                ->map(function ($row) use ($provinceIdByName, $cityIdByProvinceAndName): ?array {
+                    $id = $this->normalizeIntegerId($row->id);
+                    $label = $this->toUppercaseLabel($row->district_name);
+
+                    $provinceKey = $this->normalizeRegionName($row->province_name);
+                    $cityKey = $provinceKey . '|' . $this->normalizeRegionName($row->city_name);
+
+                    $provinceId = $provinceIdByName[$provinceKey] ?? null;
+                    $cityId = $cityIdByProvinceAndName[$cityKey] ?? null;
+
+                    if ($id === null || $provinceId === null || $cityId === null || $label === null) {
+                        return null;
+                    }
+
+                    return [
+                        'id' => $id,
+                        'province_id' => $provinceId,
+                        'city_id' => $cityId,
+                        'label' => $label,
+                        'district_lion' => $label,
+                    ];
+                })
+                ->filter()
+                ->values()
+                ->all();
+        });
     }
 
     /**
      * @return array<string, int>
      */
-    private function backfillProvinceIds(): array
+    private function provinceIdByName(): array
     {
-        $existingProvinceRows = DB::table('shipping_targets')
-            ->selectRaw('province, MIN(province_id) as province_id')
-            ->whereNotNull('province')
-            ->where('province', '!=', '')
-            ->whereNotNull('province_id')
-            ->groupBy('province')
-            ->get();
+        return Cache::remember('shipping_repository:jne:v1:province_id_by_name', now()->addHours(12), function (): array {
+            return JneDestination::query()
+                ->selectRaw('MIN(id) as id, province_name')
+                ->whereNotNull('province_name')
+                ->where('province_name', '!=', '')
+                ->groupBy('province_name')
+                ->get()
+                ->mapWithKeys(function ($row): array {
+                    $id = $this->normalizeIntegerId($row->id);
+                    $key = $this->normalizeRegionName($row->province_name);
 
-        $provinceIdByName = [];
+                    if ($id === null || $key === '') {
+                        return [];
+                    }
 
-        foreach ($existingProvinceRows as $row) {
-            $provinceIdByName[(string) $row->province] = (int) $row->province_id;
-        }
-
-        $nextProvinceId = (int) (DB::table('shipping_targets')->max('province_id') ?? 0) + 1;
-
-        $provinceValues = DB::table('shipping_targets')
-            ->whereNotNull('province')
-            ->where('province', '!=', '')
-            ->groupBy('province')
-            ->orderByRaw('MIN(id)')
-            ->pluck('province');
-
-        foreach ($provinceValues as $province) {
-            $provinceName = (string) $province;
-
-            if ($provinceName === '') {
-                continue;
-            }
-
-            if (! array_key_exists($provinceName, $provinceIdByName)) {
-                $provinceIdByName[$provinceName] = $nextProvinceId;
-                $nextProvinceId++;
-            }
-
-            DB::table('shipping_targets')
-                ->where('province', $provinceName)
-                ->whereNull('province_id')
-                ->update(['province_id' => $provinceIdByName[$provinceName]]);
-        }
-
-        return $provinceIdByName;
+                    return [$key => $id];
+                })
+                ->all();
+        });
     }
 
     /**
      * @return array<string, int>
      */
-    private function backfillCityIds(): array
+    private function cityIdByProvinceAndName(): array
     {
-        $existingCityRows = DB::table('shipping_targets')
-            ->selectRaw('province, city, MIN(city_id) as city_id')
-            ->whereNotNull('province')
-            ->where('province', '!=', '')
-            ->whereNotNull('city')
-            ->where('city', '!=', '')
-            ->whereNotNull('city_id')
-            ->groupBy('province', 'city')
-            ->get();
+        return Cache::remember('shipping_repository:jne:v1:city_id_by_province_and_name', now()->addHours(12), function (): array {
+            return JneDestination::query()
+                ->selectRaw('MIN(id) as id, province_name, city_name')
+                ->whereNotNull('province_name')
+                ->where('province_name', '!=', '')
+                ->whereNotNull('city_name')
+                ->where('city_name', '!=', '')
+                ->groupBy('province_name', 'city_name')
+                ->get()
+                ->mapWithKeys(function ($row): array {
+                    $id = $this->normalizeIntegerId($row->id);
+                    $provinceKey = $this->normalizeRegionName($row->province_name);
+                    $cityKey = $this->normalizeRegionName($row->city_name);
 
-        $cityIdByProvinceAndName = [];
+                    if ($id === null || $provinceKey === '' || $cityKey === '') {
+                        return [];
+                    }
 
-        foreach ($existingCityRows as $row) {
-            $cityKey = (string) $row->province.'|'.(string) $row->city;
-            $cityIdByProvinceAndName[$cityKey] = (int) $row->city_id;
-        }
-
-        $nextCityId = (int) (DB::table('shipping_targets')->max('city_id') ?? 0) + 1;
-
-        $cityRows = DB::table('shipping_targets')
-            ->select('province', 'city')
-            ->whereNotNull('province')
-            ->where('province', '!=', '')
-            ->whereNotNull('city')
-            ->where('city', '!=', '')
-            ->groupBy('province', 'city')
-            ->orderByRaw('MIN(id)')
-            ->get();
-
-        foreach ($cityRows as $cityRow) {
-            $provinceName = (string) $cityRow->province;
-            $cityName = (string) $cityRow->city;
-
-            if ($provinceName === '' || $cityName === '') {
-                continue;
-            }
-
-            $cityKey = $provinceName.'|'.$cityName;
-
-            if (! array_key_exists($cityKey, $cityIdByProvinceAndName)) {
-                $cityIdByProvinceAndName[$cityKey] = $nextCityId;
-                $nextCityId++;
-            }
-
-            $cityId = $cityIdByProvinceAndName[$cityKey];
-
-            DB::table('shipping_targets')
-                ->where('province', $provinceName)
-                ->where('city', $cityName)
-                ->update([
-                    'city_id' => DB::raw("COALESCE(city_id, {$cityId})"),
-                ]);
-        }
-
-        return $cityIdByProvinceAndName;
+                    return [$provinceKey . '|' . $cityKey => $id];
+                })
+                ->all();
+        });
     }
 
-    private function normalizeProvinceLabel(string $label): string
+    private function destinationById(int $id): ?JneDestination
     {
-        $normalized = trim(mb_strtolower($label));
-
-        if (str_starts_with($normalized, 'provinsi ')) {
-            $normalized = trim(substr($normalized, strlen('provinsi ')));
-        }
-
-        return $normalized;
+        return Cache::remember("shipping_repository:jne:v1:destination:{$id}", now()->addHours(12), function () use ($id): ?JneDestination {
+            return JneDestination::query()->find($id);
+        });
     }
 
-    private function extractRegionValue(mixed $row, array $keys): mixed
+    private function findProvinceName(string $province): ?string
     {
-        foreach ($keys as $key) {
-            if (is_array($row) && array_key_exists($key, $row)) {
-                return $row[$key];
-            }
+        $normalizedProvince = $this->normalizeRegionName($province);
 
-            if (is_object($row) && isset($row->{$key})) {
-                return $row->{$key};
-            }
+        if ($normalizedProvince === '') {
+            return null;
         }
 
-        return null;
+        $cacheKey = 'shipping_repository:jne:v1:find_province:' . md5($normalizedProvince);
+
+        return Cache::remember($cacheKey, now()->addHours(12), function () use ($normalizedProvince): ?string {
+            $provinceName = JneDestination::query()
+                ->whereNotNull('province_name')
+                ->where('province_name', '!=', '')
+                ->whereRaw('UPPER(TRIM(province_name)) = ?', [$normalizedProvince])
+                ->value('province_name');
+
+            return filled($provinceName) ? (string) $provinceName : null;
+        });
+    }
+
+    /**
+     * @return array{province_name:string,city_name:string}|null
+     */
+    private function findRegionByNames(string $province, string $city): ?array
+    {
+        $normalizedProvince = $this->normalizeRegionName($province);
+        $normalizedCity = $this->normalizeRegionName($city);
+
+        if ($normalizedProvince === '' || $normalizedCity === '') {
+            return null;
+        }
+
+        $cacheKey = 'shipping_repository:jne:v1:find_region:' . md5($normalizedProvince . '|' . $normalizedCity);
+
+        return Cache::remember($cacheKey, now()->addHours(12), function () use ($normalizedProvince, $normalizedCity): ?array {
+            $row = JneDestination::query()
+                ->select('province_name', 'city_name')
+                ->whereNotNull('province_name')
+                ->where('province_name', '!=', '')
+                ->whereNotNull('city_name')
+                ->where('city_name', '!=', '')
+                ->whereRaw('UPPER(TRIM(province_name)) = ?', [$normalizedProvince])
+                ->whereRaw('UPPER(TRIM(city_name)) = ?', [$normalizedCity])
+                ->first();
+
+            if (! $row || blank($row->province_name) || blank($row->city_name)) {
+                return null;
+            }
+
+            return [
+                'province_name' => (string) $row->province_name,
+                'city_name' => (string) $row->city_name,
+            ];
+        });
+    }
+
+    private function normalizeIntegerId(mixed $value): ?int
+    {
+        if (blank($value) || ! is_scalar($value)) {
+            return null;
+        }
+
+        $value = trim((string) $value);
+
+        if ($value === '' || ! ctype_digit($value)) {
+            return null;
+        }
+
+        return (int) $value;
+    }
+
+    private function normalizeRegionName(mixed $value): string
+    {
+        if (blank($value) || ! is_scalar($value)) {
+            return '';
+        }
+
+        $normalized = Str::upper(trim((string) $value));
+        $normalized = preg_replace('/\s+/u', ' ', $normalized);
+
+        return is_string($normalized) ? trim($normalized) : '';
+    }
+
+    private function toUppercaseLabel(mixed $label): ?string
+    {
+        if (blank($label) || ! is_scalar($label)) {
+            return null;
+        }
+
+        return $this->normalizeRegionName($label);
     }
 }
