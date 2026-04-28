@@ -1591,7 +1591,8 @@ class DashboardService
             'member_since' => $customer->created_at?->toIso8601String(),
             'wallet_balance' => (float) ($customer->ewallet_saldo ?? 0),
             'status' => (int) ($customer->status ?? 0),
-            'has_placement' => $customer->networkMatrixes()->exists(),
+            // 'has_placement' => $customer->networkMatrixes()->exists(),
+            'has_placement' => $customer->where('status', 3)->exists(),
             'is_wa_confirmed' => $isWaConfirmed,
         ];
     }

@@ -235,7 +235,7 @@ class CustomerAuthController extends Controller
     {
         /** @var Customer $customer */
         $customer = auth('customer')->user();
-
+        // dd($customer);
         if (! $customer) {
             abort(401);
         }

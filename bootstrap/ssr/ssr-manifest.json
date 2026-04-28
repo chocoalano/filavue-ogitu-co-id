@@ -84,7 +84,7 @@
     "/build/assets/Page-ws952gfV.js"
   ],
   "node_modules/@nuxt/ui/dist/runtime/components/PageAside.vue": [
-    "/build/assets/Index-DV6y40Ef.js"
+    "/build/assets/Index-9l5xrl6S.js"
   ],
   "node_modules/@nuxt/ui/dist/runtime/components/PageBody.vue": [
     "/build/assets/Page-ws952gfV.js"
@@ -256,10 +256,10 @@
     "/build/assets/Index-BMSUDIK7.js"
   ],
   "resources/js/Pages/Auth/Dashboard/Index.vue": [
-    "/build/assets/Index-DV6y40Ef.js"
+    "/build/assets/Index-9l5xrl6S.js"
   ],
   "resources/js/Pages/Auth/Dashboard/Index.vue?vue&type=script&setup=true&lang.ts": [
-    "/build/assets/Index-DV6y40Ef.js"
+    "/build/assets/Index-9l5xrl6S.js"
   ],
   "resources/js/Pages/Auth/Dashboard/partials/Addresses.vue": [
     "/build/assets/Addresses-BkuYO7cN.js"
@@ -592,31 +592,31 @@
     "/build/assets/Bonus-CYXjmb7P.js"
   ],
   "resources/js/components/dashboard/index/DashboardAsideMenu.vue": [
-    "/build/assets/Index-DV6y40Ef.js"
+    "/build/assets/Index-9l5xrl6S.js"
   ],
   "resources/js/components/dashboard/index/DashboardAsideMenu.vue?vue&type=script&setup=true&lang.ts": [
-    "/build/assets/Index-DV6y40Ef.js"
+    "/build/assets/Index-9l5xrl6S.js"
   ],
   "resources/js/components/dashboard/index/DashboardPageHeader.vue": [
-    "/build/assets/Index-DV6y40Ef.js"
+    "/build/assets/Index-9l5xrl6S.js"
   ],
   "resources/js/components/dashboard/index/DashboardPageHeader.vue?vue&type=script&setup=true&lang.ts": [
-    "/build/assets/Index-DV6y40Ef.js"
+    "/build/assets/Index-9l5xrl6S.js"
   ],
   "resources/js/components/dashboard/index/aside/DashboardAsideMenuNav.vue": [
-    "/build/assets/Index-DV6y40Ef.js"
+    "/build/assets/Index-9l5xrl6S.js"
   ],
   "resources/js/components/dashboard/index/aside/DashboardAsideMenuNav.vue?vue&type=script&setup=true&lang.ts": [
-    "/build/assets/Index-DV6y40Ef.js"
+    "/build/assets/Index-9l5xrl6S.js"
   ],
   "resources/js/components/dashboard/index/aside/DashboardAsideMenuTrigger.vue": [
-    "/build/assets/Index-DV6y40Ef.js"
+    "/build/assets/Index-9l5xrl6S.js"
   ],
   "resources/js/components/dashboard/index/aside/DashboardAsideMenuTrigger.vue?vue&type=script&setup=true&lang.ts": [
-    "/build/assets/Index-DV6y40Ef.js"
+    "/build/assets/Index-9l5xrl6S.js"
   ],
   "resources/js/components/dashboard/index/aside/DashboardAsideTipsCard.vue": [
-    "/build/assets/Index-DV6y40Ef.js"
+    "/build/assets/Index-9l5xrl6S.js"
   ],
   "resources/js/components/dashboard/lifetime/LifetimeClaimedTableCard.vue": [
     "/build/assets/Lifetime-D0fqOugE.js"
@@ -1109,10 +1109,10 @@
     "/build/assets/Addresses-BkuYO7cN.js"
   ],
   "resources/js/composables/useDashboardAsideLinks.ts": [
-    "/build/assets/Index-DV6y40Ef.js"
+    "/build/assets/Index-9l5xrl6S.js"
   ],
   "resources/js/composables/useDashboardAsideMenuState.ts": [
-    "/build/assets/Index-DV6y40Ef.js"
+    "/build/assets/Index-9l5xrl6S.js"
   ],
   "resources/js/composables/useDashboardBonus.ts": [
     "/build/assets/Bonus-CYXjmb7P.js"
@@ -1133,7 +1133,7 @@
     "/build/assets/Promo-C4wHRI-n.js"
   ],
   "resources/js/composables/useDashboardSections.ts": [
-    "/build/assets/Index-DV6y40Ef.js"
+    "/build/assets/Index-9l5xrl6S.js"
   ],
   "resources/js/composables/useDashboardWallet.ts": [
     "/build/assets/Wallet--e_1z7w7.js"
@@ -1266,7 +1266,7 @@
     "/build/assets/AppLayout-BtCPfvQi.css"
   ],
   "virtual:nuxt-ui-templates/ui/page-aside.ts": [
-    "/build/assets/Index-DV6y40Ef.js"
+    "/build/assets/Index-9l5xrl6S.js"
   ],
   "virtual:nuxt-ui-templates/ui/page-body.ts": [
     "/build/assets/Page-ws952gfV.js"
