@@ -26,8 +26,8 @@ class CustomerRegistrationService
             'gender' => $request->string('gender')->toString(),
             'alamat' => $request->filled('alamat') ? $request->string('alamat')->trim()->toString() : null,
             'password' => $request->string('password')->toString(),
-            'sponsor_id' => $sponsor?->id,
-            'status' => 1,
+            'sponsor_id' => $sponsor?->id ?? Customer::first()->orderBy('id')->value('id')->id,
+            'status' => 3,
         ]);
 
         if ($proses) {
